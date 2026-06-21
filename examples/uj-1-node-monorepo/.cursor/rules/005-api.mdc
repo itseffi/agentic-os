@@ -1,0 +1,11 @@
+---
+description: API design patterns
+globs: packages/api/**/*
+alwaysApply: true
+---
+# API Conventions
+
+- RESTful endpoints follow /api/v1/{resource} pattern
+- Use zod for request validation
+- Return consistent error shapes: { error: string, code: number }
+- All endpoints require authentication except /health

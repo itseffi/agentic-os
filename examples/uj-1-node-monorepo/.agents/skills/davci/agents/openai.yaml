@@ -1,0 +1,5 @@
+name: davci
+description: Define clear decision rights - Decider, Approver, Veto, Consulted, Informed. Use when clarifying who decides.
+version: 1
+invocation:
+  trigger: implicit

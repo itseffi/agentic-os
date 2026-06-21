@@ -1,0 +1,5 @@
+name: writing-plans
+description: Create comprehensive implementation plans with bite-sized tasks. Use when you have requirements before touching code.
+version: 1
+invocation:
+  trigger: implicit

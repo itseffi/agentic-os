@@ -1,0 +1,5 @@
+name: stakeholder-risk-review
+description: Review a feature or PRD for stakeholder and political risk before broad circulation.
+version: 1
+invocation:
+  trigger: implicit

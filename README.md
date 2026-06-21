@@ -12,11 +12,30 @@
    cd personal-os
    ```
 
-2. **Run setup**
+2. **Run setup** (choose your path)
    ```bash
    chmod +x setup.sh
+
+   # Classic interactive setup (simple projects, greenfield workspaces)
    ./setup.sh
+
+   # AI-assisted setup (existing projects, complex repos)
+   ./setup.sh --ai --runtime claude,cursor
+
+   # Run against a different directory (bootstraps workspace + skill into target)
+   ./setup.sh --ai --target ./my-project --runtime claude
+
+   # Unattended auto-approval (requires explicit --runtime)
+   ./setup.sh --ai --auto --runtime claude,cursor
    ```
+
+   After running `--ai`, invoke the skill in your AI tool: `/agentic-os-setup` (Claude Code) or "Run the agentic-os-setup skill" (other runtimes).
+
+   **When to use which:**
+   - **Classic** — Starting fresh or simple single-purpose projects
+   - **AI-assisted** — Existing projects with multiple concerns, existing AI configs, or team structures. The AI scans your repo, classifies complexity, and proposes configuration proportional to your needs.
+   - **Auto mode** (`--auto`) — CI/scripted environments where you trust the AI's proposal. Requires explicit `--runtime`. Shows the preview then writes without pausing for approval.
+   - **Target** (`--target <path>`) — Run setup against a repo without cd'ing into it. Bootstraps workspace and skill into the target so the AI finds everything locally.
 
 3. **Start using**
    This automates high-leverage execution end-to-end: it converts raw backlog into prioritized, goal-aligned, verification-enforced action plans.
@@ -42,6 +61,7 @@ flowchart TD
     U["User Prompt"] --> A["Agent Runtime<br/>Claude Code | Codex | Pi | OpenClaw"]
     A --> I["Instructions<br/>AGENTS.md + wrappers"]
     A --> S["Skills<br/>.agents/skills/*/SKILL.md"]
+    A --> AI["AI-Installer Skill<br/>.agents/skills/agentic-os-setup/"]
     A --> W["Workflows<br/>Workflows/*.md"]
     A --> F["State + Context<br/>Tasks, GOALS, BACKLOG, Knowledge, Resources"]
     A -. optional .-> M["MCP Integrations<br/>System/mcp + external services"]
@@ -50,22 +70,63 @@ flowchart TD
 
     classDef core fill:#ff9891,stroke:#2b2b2b,color:#111111,stroke-width:1.2px;
     classDef optional fill:#ffd4d0,stroke:#2b2b2b,color:#111111,stroke-width:1.2px,stroke-dasharray: 4 3;
-    class U,A,I,S,W,F,E core;
+    class U,A,I,S,W,F,E,AI core;
     class M,D optional;
 ```
+
+### AI-Assisted Setup Flow
+
+```mermaid
+flowchart LR
+    S["setup.sh --ai"] --> V["Verify skill exists"]
+    V --> C["Write context bridge"]
+    C --> P["Print invocation instructions"]
+    P --> U["User invokes AI"]
+    U --> SC["Scan repo structure"]
+    SC --> CL["Classify complexity"]
+    CL --> PR["Propose configuration"]
+    PR --> D{"Approve?"}
+    D -->|Yes| W["Write files + manifest"]
+    D -->|Selective| W
+    D -->|No| X["Exit, nothing written"]
+    D -->|Dry-run| DR["Show diffs only"]
+    D -->|Auto| W
+
+    classDef action fill:#ff9891,stroke:#2b2b2b,color:#111111,stroke-width:1.2px;
+    classDef decision fill:#ffd4d0,stroke:#2b2b2b,color:#111111,stroke-width:1.2px;
+    class S,V,C,P,U,SC,CL,PR,W,X,DR action;
+    class D decision;
+```
+
+---
+
+## Setup Modes
+
+| Mode | Command | When to Use |
+|------|---------|-------------|
+| Classic | `./setup.sh` | Greenfield workspace, simple projects, first-time users |
+| AI-assisted | `./setup.sh --ai` | Existing repos, multiple concerns, existing AI configs |
+| Targeted | `./setup.sh --ai --target ./path` | Run against a different repo without cd (bootstraps workspace locally) |
+| Auto | `./setup.sh --ai --auto --runtime claude` | Unattended/scripted use (requires explicit `--runtime`) |
+| Dry-run | `./setup.sh --ai --dry-run` | Preview proposals without writing anything |
+| Remove | `./setup.sh --remove` | Clean uninstall of all generated files |
 
 ---
 
 ## Agent Compatibility
 
-Personal OS is designed to work with Claude Code, Codex, Pi, OpenClaw, and similar coding agent runtimes.
+Personal OS is designed to work with Claude Code, Codex, Pi, OpenClaw, Cursor, Cline, Antigravity, and similar coding agent runtimes.
 
 - Shared behavior: `AGENTS.md`
 - Claude wrapper: `CLAUDE.md`
 - Codex wrapper: `CODEX.md`
 - Pi wrapper: `PI.md`
 - OpenClaw wrapper: `OPENCLAW.md`
+- Cursor: `.cursor/rules/*.mdc`
+- Cline: `.clinerules`
+- Antigravity: `AGENTS.md` (shared)
 - Canonical runtime skills: `.agents/skills/*/SKILL.md`
+- **AI-assisted setup** supports targeting specific runtimes: `./setup.sh --ai --runtime claude,cursor,cline,antigravity`
 - Skills in this repo follow the [Agent Skills open standard](https://agentskills.io/home).
 - This repo uses skills with progressive disclosure to manage context efficiently: agents begin with each skill's metadata (`name`, `description`, file path, plus `agents/openai.yaml`), and load full `SKILL.md` instructions only when a skill is selected. Canonical skills live in `.agents/skills/`, with bridge paths for Claude, Pi, and OpenClaw.
 - Optional subagents are supported when the runtime provides agent delegation features (not required for core repo operation).
@@ -105,6 +166,9 @@ personal-os/
 ├── Resources/          # Voice samples, templates, references
 ├── Workflows/          # Daily + Product & Strategy workflows
 ├── .agents/skills/     # Canonical Codex/OpenAI skill packs
+│   └── agentic-os-setup/  # AI-installer skill (scan, classify, propose, write)
+├── examples/           # Test repo fixtures (UJ-1 through UJ-4)
+├── tests/              # Automated test suite (shell + Python)
 ├── Evals/              # Session reviews
 ├── Tutorials/          # Learning guides
 └── System/             # MCP server, templates, integrations

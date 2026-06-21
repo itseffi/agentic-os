@@ -1,0 +1,10 @@
+---
+description: Infrastructure as code standards
+globs: Infrastructure/**/*
+alwaysApply: true
+---
+# Infrastructure Standards
+
+- Terraform modules follow standard structure (main.tf, variables.tf, outputs.tf)
+- All resources tagged with environment and team
+- No hardcoded secrets (use variable references)

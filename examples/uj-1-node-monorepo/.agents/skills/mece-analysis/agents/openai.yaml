@@ -1,0 +1,5 @@
+name: mece-analysis
+description: Structure thinking using Mutually Exclusive, Collectively Exhaustive categories. Use when breaking down problems or ensuring complete coverage.
+version: 1
+invocation:
+  trigger: implicit

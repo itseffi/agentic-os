@@ -1,0 +1,5 @@
+name: prd-writing
+description: Write a structured PRD for high-risk, cross-team, or multi-sprint initiatives before implementation.
+version: 1
+invocation:
+  trigger: implicit

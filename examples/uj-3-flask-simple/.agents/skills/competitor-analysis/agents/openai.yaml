@@ -1,0 +1,5 @@
+name: competitor-analysis
+description: Analyze competitors using Porter's four-component model - drivers, assumptions, strategy, capabilities.
+version: 1
+invocation:
+  trigger: implicit

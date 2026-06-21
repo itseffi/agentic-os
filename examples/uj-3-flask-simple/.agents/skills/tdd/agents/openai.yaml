@@ -1,0 +1,5 @@
+name: tdd
+description: Test-driven development - write failing test first, then minimal code. Use before implementing any feature or bugfix.
+version: 1
+invocation:
+  trigger: implicit

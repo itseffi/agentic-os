@@ -1,0 +1,5 @@
+name: experiment-design
+description: Design robust experiments to test product hypotheses. Define metrics, sample size, and success criteria.
+version: 1
+invocation:
+  trigger: implicit

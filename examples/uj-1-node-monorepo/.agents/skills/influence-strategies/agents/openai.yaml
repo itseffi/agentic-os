@@ -1,0 +1,5 @@
+name: influence-strategies
+description: Generate influence strategies using Cialdini's seven principles. Use when you need to influence toward an outcome.
+version: 1
+invocation:
+  trigger: implicit

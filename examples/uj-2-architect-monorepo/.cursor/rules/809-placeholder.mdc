@@ -1,0 +1,7 @@
+---
+description: Rule 809 placeholder
+globs: "**/*.md"
+alwaysApply: false
+---
+# Rule 809
+Placeholder rule for testing numbering detection.

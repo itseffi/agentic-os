@@ -1,0 +1,10 @@
+---
+description: Date handling conventions
+globs: src/**/*.ts
+alwaysApply: true
+---
+# Date Handling
+
+- Always use ISO 8601 format for dates
+- Use dayjs for date manipulation
+- Store dates in UTC, display in user's timezone

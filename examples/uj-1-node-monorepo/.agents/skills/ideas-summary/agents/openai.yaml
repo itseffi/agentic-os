@@ -1,0 +1,5 @@
+name: ideas-summary
+description: Summarize meetings using IDEAS framework - Insights, Decisions, Engagements, Actions, Summary. Use after any meeting.
+version: 1
+invocation:
+  trigger: implicit

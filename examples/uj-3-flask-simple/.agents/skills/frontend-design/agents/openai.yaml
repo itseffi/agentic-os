@@ -1,0 +1,5 @@
+name: frontend-design
+description: Design implementation-ready frontend solutions with UX intent, component structure, responsive behavior, accessibility, and handoff criteria.
+version: 1
+invocation:
+  trigger: implicit

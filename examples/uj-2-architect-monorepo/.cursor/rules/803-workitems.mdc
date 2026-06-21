@@ -1,0 +1,10 @@
+---
+description: Team work items and sprint tracking
+globs: Team-Workitems/**/*
+alwaysApply: true
+---
+# Work Item Standards
+
+- Work items have frontmatter: status, priority, assignee
+- Link to design docs via Design-Ref field
+- Use [P0]-[P3] priority prefix in filename

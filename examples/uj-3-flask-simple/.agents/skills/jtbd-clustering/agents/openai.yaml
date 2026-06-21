@@ -1,0 +1,5 @@
+name: jtbd-clustering
+description: Cluster forces from multiple JTBD interviews to identify patterns. Use after extracting from multiple interviews.
+version: 1
+invocation:
+  trigger: implicit

@@ -1,0 +1,5 @@
+name: google-calendar-schedule-check
+description: Check Google Calendar for today's schedule. Use during daily planning or when user asks about their calendar.
+version: 1
+invocation:
+  trigger: implicit

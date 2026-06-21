@@ -1,0 +1,5 @@
+name: verification
+description: Verify before claiming completion. No claims without fresh verification evidence. Use before marking work done.
+version: 1
+invocation:
+  trigger: implicit

@@ -1,0 +1,5 @@
+name: opportunity-solution-tree
+description: Transform research into Opportunity Solution Tree (Teresa Torres method). Map outcomes, opportunities, solutions, and experiments.
+version: 1
+invocation:
+  trigger: implicit

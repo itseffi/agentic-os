@@ -1,0 +1,7 @@
+---
+description: Rule 805 placeholder
+globs: "**/*.md"
+alwaysApply: false
+---
+# Rule 805
+Placeholder rule for testing numbering detection.

@@ -1,0 +1,5 @@
+name: agentic-os-setup
+description: AI-assisted repo setup — scans structure, classifies complexity, proposes configuration proportional to detected needs. Use when setting up agentic-os on an existing project.
+version: 1
+invocation:
+  trigger: implicit

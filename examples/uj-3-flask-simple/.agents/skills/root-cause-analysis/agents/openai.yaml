@@ -1,0 +1,5 @@
+name: root-cause-analysis
+description: Uncover root causes through recursive Why questioning and consequence exploration. Use before acting on problems.
+version: 1
+invocation:
+  trigger: implicit

@@ -1,0 +1,10 @@
+---
+description: Operations and hiring pipeline
+globs: Operations/**/*
+alwaysApply: true
+---
+# Operations Standards
+
+- Job descriptions follow template in Operations/templates/
+- Interview notes must reference Job-ID
+- Candidate files: candidate_[first]-[last].md

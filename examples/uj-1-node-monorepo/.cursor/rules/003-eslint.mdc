@@ -1,0 +1,11 @@
+---
+description: ESLint configuration and style
+globs: src/**/*.{ts,tsx}
+alwaysApply: true
+---
+# ESLint Rules
+
+- Follow airbnb style guide
+- No unused variables (error level)
+- Prefer const over let
+- No console.log in production code
