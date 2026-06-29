@@ -1,0 +1,7 @@
+---
+description: Rule 808 placeholder
+globs: "**/*.md"
+alwaysApply: false
+---
+# Rule 808
+Placeholder rule for testing numbering detection.

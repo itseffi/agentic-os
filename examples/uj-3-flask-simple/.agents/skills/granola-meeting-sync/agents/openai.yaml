@@ -1,0 +1,5 @@
+name: granola-meeting-sync
+description: Sync new Granola meetings to local Knowledge folder. Use during daily planning, when user asks "what should I do today", or asks to review/sync meetings.
+version: 1
+invocation:
+  trigger: implicit

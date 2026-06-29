@@ -1,0 +1,5 @@
+name: jtbd-extraction
+description: Analyze interviews using Jobs to Be Done framework. Extract push, pull, anxiety, and habit forces.
+version: 1
+invocation:
+  trigger: implicit

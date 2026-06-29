@@ -1,0 +1,10 @@
+---
+description: Core project standards
+globs: "**/*.md"
+alwaysApply: true
+---
+# Core Standards
+
+- All markdown files use ATX headers (# not ===)
+- Dates in YYYY-MM-DD format
+- File names in kebab-case

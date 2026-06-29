@@ -1,0 +1,5 @@
+name: value-chain-mapping
+description: Map end-user needs to the full value chain, identify core value generators, and highlight vulnerabilities.
+version: 1
+invocation:
+  trigger: implicit

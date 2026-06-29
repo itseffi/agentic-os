@@ -1,0 +1,5 @@
+name: slack-message-check
+description: Check Slack for important messages and activity. Use during daily planning or when user asks about Slack updates.
+version: 1
+invocation:
+  trigger: implicit

@@ -1,0 +1,10 @@
+---
+description: Architecture and design documents
+globs: Designs/**/*
+alwaysApply: true
+---
+# Design Standards
+
+- Every design doc needs a Status field (Draft, Review, Approved, Deprecated)
+- Reference ADRs by ID
+- Include Mermaid diagrams for system interactions

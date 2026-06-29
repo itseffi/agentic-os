@@ -1,0 +1,5 @@
+name: challenging-stakeholder-questions
+description: Generate rigorous stakeholder challenge questions for proposal or meeting preparation.
+version: 1
+invocation:
+  trigger: implicit

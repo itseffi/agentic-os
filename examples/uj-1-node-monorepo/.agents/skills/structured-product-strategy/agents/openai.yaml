@@ -1,0 +1,5 @@
+name: structured-product-strategy
+description: Build a complete product strategy from context, including objective, users, superpowers, vision, pillars, impact, and roadmap.
+version: 1
+invocation:
+  trigger: implicit

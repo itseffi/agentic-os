@@ -1,0 +1,5 @@
+name: ost-target-selection
+description: Select one target opportunity from an OST using evidence-based weighted scoring and tie-breakers.
+version: 1
+invocation:
+  trigger: implicit

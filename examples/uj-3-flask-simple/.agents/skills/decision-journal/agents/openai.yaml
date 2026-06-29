@@ -1,0 +1,5 @@
+name: decision-journal
+description: Create structured records of decisions with expected outcomes, probabilities, and quit conditions. Use for important decisions.
+version: 1
+invocation:
+  trigger: implicit

@@ -1,0 +1,5 @@
+name: hypothesis-design
+description: Formulate clear, testable hypotheses for product experiments. Use when designing experiments to validate solutions.
+version: 1
+invocation:
+  trigger: implicit

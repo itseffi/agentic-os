@@ -1,0 +1,5 @@
+name: crux-diagnosis
+description: Identify the pivotal obstacle between current state and desired future. Use when developing strategy.
+version: 1
+invocation:
+  trigger: implicit

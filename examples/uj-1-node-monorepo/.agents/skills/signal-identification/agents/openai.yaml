@@ -1,0 +1,5 @@
+name: signal-identification
+description: Design efficient early signals to validate assumptions. Find the fastest way to learn if you're right.
+version: 1
+invocation:
+  trigger: implicit

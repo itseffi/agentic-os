@@ -1,0 +1,5 @@
+name: brainstorming
+description: Turn ideas into designs through collaborative dialogue. Use before any creative work - features, components, or modifications.
+version: 1
+invocation:
+  trigger: implicit

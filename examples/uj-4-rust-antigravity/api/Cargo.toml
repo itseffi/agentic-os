@@ -1,0 +1,10 @@
+[package]
+name = "api"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+core = { path = "../core" }
+shared = { path = "../shared" }
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }

@@ -1,0 +1,5 @@
+name: executive-update-review
+description: Improve executive updates for clarity, decision impact, and concise speaking flow.
+version: 1
+invocation:
+  trigger: implicit

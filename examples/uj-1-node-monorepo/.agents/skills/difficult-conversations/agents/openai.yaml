@@ -1,0 +1,5 @@
+name: difficult-conversations
+description: Prepare for challenging conversations using Prepare-Listen-Empathize-Clarify-Solve framework.
+version: 1
+invocation:
+  trigger: implicit

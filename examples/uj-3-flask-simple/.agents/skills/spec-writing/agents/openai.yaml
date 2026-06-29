@@ -1,0 +1,5 @@
+name: spec-writing
+description: Convert an approved PRD or clear requirements into an implementation-ready technical spec with scope, interfaces, and acceptance criteria.
+version: 1
+invocation:
+  trigger: implicit

@@ -1,0 +1,5 @@
+name: systematic-debugging
+description: Four-phase debugging process - root cause first, then fix. Use when encountering bugs or unexpected behavior.
+version: 1
+invocation:
+  trigger: implicit

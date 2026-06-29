@@ -1,0 +1,5 @@
+name: backend-design
+description: Design backend architecture for implementation with API contracts, data model changes, service boundaries, security, and observability.
+version: 1
+invocation:
+  trigger: implicit

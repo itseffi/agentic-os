@@ -1,0 +1,5 @@
+name: hidden-agendas
+description: Identify potential hidden agendas of stakeholders. Use before high-stakes meetings with complex motivations.
+version: 1
+invocation:
+  trigger: implicit

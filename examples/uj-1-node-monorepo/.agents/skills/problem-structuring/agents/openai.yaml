@@ -1,0 +1,5 @@
+name: problem-structuring
+description: Break down complex problems into actionable recommendations using deductive and inductive analysis.
+version: 1
+invocation:
+  trigger: implicit

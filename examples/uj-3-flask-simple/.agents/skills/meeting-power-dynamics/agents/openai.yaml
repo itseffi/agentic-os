@@ -1,0 +1,5 @@
+name: meeting-power-dynamics
+description: Map meeting-specific power dynamics, influence ranking, and tactical recommendations.
+version: 1
+invocation:
+  trigger: implicit

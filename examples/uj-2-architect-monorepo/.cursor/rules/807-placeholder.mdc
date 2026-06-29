@@ -1,0 +1,7 @@
+---
+description: Rule 807 placeholder
+globs: "**/*.md"
+alwaysApply: false
+---
+# Rule 807
+Placeholder rule for testing numbering detection.

@@ -1,0 +1,5 @@
+name: assumption-prioritization
+description: Prioritize assumptions by risk and importance. Use after assumption mapping to decide what to test first.
+version: 1
+invocation:
+  trigger: implicit

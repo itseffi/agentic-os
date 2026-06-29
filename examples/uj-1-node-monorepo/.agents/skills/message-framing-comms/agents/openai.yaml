@@ -1,0 +1,5 @@
+name: message-framing-comms
+description: Design audience-specific framing, drafts, and communication sequence for stakeholder updates.
+version: 1
+invocation:
+  trigger: implicit

@@ -1,0 +1,5 @@
+name: llm-coding-guardrails
+description: Behavioral guardrails to reduce common LLM coding mistakes with a caution-first approach.
+version: 1
+invocation:
+  trigger: implicit

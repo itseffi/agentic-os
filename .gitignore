@@ -39,3 +39,11 @@ Thumbs.db
 *~
 .vscode/
 .idea/
+
+# Test results (generated output, not tracked)
+tests/results/
+
+# Eval results (generated output, not tracked — keep READMEs)
+Evals/skills/results/*.json
+Evals/memory/results/*.json
+!Evals/**/README.md

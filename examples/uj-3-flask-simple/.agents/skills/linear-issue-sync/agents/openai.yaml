@@ -1,0 +1,5 @@
+name: linear-issue-sync
+description: Sync Linear issues with local tasks. Use during daily planning or when user asks about Linear issues.
+version: 1
+invocation:
+  trigger: implicit

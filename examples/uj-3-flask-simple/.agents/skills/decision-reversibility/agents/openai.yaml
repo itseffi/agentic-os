@@ -1,0 +1,5 @@
+name: decision-reversibility
+description: Classify decisions as Hat/Haircut/Tattoo by reversibility. Use to calibrate how much analysis a decision deserves.
+version: 1
+invocation:
+  trigger: implicit

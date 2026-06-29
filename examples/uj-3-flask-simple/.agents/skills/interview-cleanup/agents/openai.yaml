@@ -1,0 +1,5 @@
+name: interview-cleanup
+description: Clean up raw interview transcripts while preserving meaning and speaker voice. Use after conducting interviews.
+version: 1
+invocation:
+  trigger: implicit

@@ -1,0 +1,5 @@
+name: power-map
+description: Map stakeholders by power and interest to plan engagement strategy. Use when starting multi-stakeholder initiatives.
+version: 1
+invocation:
+  trigger: implicit

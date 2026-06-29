@@ -1,0 +1,5 @@
+name: limit-based-strategy
+description: Develop a limit-based product strategy with convergence milestones, acceleration levers, assumptions, and phased execution.
+version: 1
+invocation:
+  trigger: implicit

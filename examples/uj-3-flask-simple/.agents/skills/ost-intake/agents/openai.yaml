@@ -1,0 +1,5 @@
+name: ost-intake
+description: Normalize and collect complete Opportunity Solution Tree inputs before OST synthesis.
+version: 1
+invocation:
+  trigger: implicit

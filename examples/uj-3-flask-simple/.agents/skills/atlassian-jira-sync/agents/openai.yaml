@@ -1,0 +1,5 @@
+name: atlassian-jira-sync
+description: Sync Jira issues with local tasks. Use during daily planning or when user asks about Jira issues.
+version: 1
+invocation:
+  trigger: implicit

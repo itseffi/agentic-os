@@ -1,0 +1,5 @@
+name: assumption-mapping
+description: Surface and categorize assumptions underlying product strategy. Use early in development to document what you're betting on.
+version: 1
+invocation:
+  trigger: implicit
