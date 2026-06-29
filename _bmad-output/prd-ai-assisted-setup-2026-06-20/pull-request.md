@@ -121,31 +121,47 @@ Then invoke the AI skill in your runtime of choice and verify:
 
 ## Verification Status
 
-**Runtimes tested:**
-- ✅ **Claude Code** — Complex tier repo (BMAD, 54 existing skills, 7 concern folders). Generated: AGENTS.md (full behavioral instructions), GOALS.md (AI-inferred), CLAUDE-agentic-os.md (companion). BMAD persona deferral working. Track vs gitignore decision correct.
-- ✅ **Cursor** — Same repo. Generated 4 `.cursor/rules/` files (806-809) with proper numbering, specific globs, no collisions with existing 800-805. BMAD deferral, scope isolation, naming, cross-refs, quality gates.
+**Runtimes tested — all four, against a real Complex-tier repo:**
+
+The architect-docs monorepo (BMAD framework, 50+ existing skills, `.cursor/rules/` 000–805, multi-domain `docs/`, ~176 work items) was cloned four times and the `agentic-os-setup` skill was run end-to-end against each clone, one runtime per clone. Every run classified Complex (driven by `_bmad/`), deferred persona routing to BMAD, and produced a lean AGENTS.md within the context budget with procedures relocated to an emitted `task-management` skill. Results verified on disk (real byte counts, not estimates):
+
+| Runtime | AGENTS.md | Within 10k? | Emitted skill | Per-runtime file | BMAD deferral |
+|---------|-----------|-------------|---------------|------------------|---------------|
+| Claude | 5,178 chars | ✅ | task-management | CLAUDE-agentic-os.md (companion; existing CLAUDE.md untouched) | ✅ |
+| Cursor | 4,815 chars | ✅ | task-management | .cursor/rules/806, 807 (no collision with 000–805, specific globs) | ✅ |
+| Cline | 4,237 chars | ✅ | task-management | .clinerules (new; points to skill, no inlined procedures) | ✅ |
+| Antigravity | 4,206 chars | ✅ | task-management | AGENTS.md managed block (valid sha256 start/end markers) | ✅ |
+
+In every case: AGENTS.md carries a "Skills & Workflows" index and contains zero inlined procedure sections (backlog/daily/maintenance/helpful-prompts all live in the emitted skill); `orchestration-model` was correctly NOT emitted (BMAD owns personas); the manifest records `complexity_tier: complex`, `detected_frameworks: ["bmad"]`, and every generated file for clean `--remove`. Track-vs-gitignore was inferred per-repo (tracked when shared AI configs are already committed; gitignored when signals indicate a private personal workspace).
+
+This is the same outcome that motivated the change: before, the skill generated a ~4–5 KB AGENTS.md packed with the full operational manual inline. Now AGENTS.md holds only always-on rules + an index, and the bulky procedures load on demand — so every turn is cheaper without losing any rule.
 
 **Unit tests:**
 - ✅ Shell tests: 29/29 passed (flag parsing, routing, --remove, --target, --auto)
-- ✅ Python tests: 24/24 passed (manifest schema, .mdc frontmatter, glob specificity, managed blocks, numbering)
-
-**Not yet tested:** Cline, Antigravity (no test environment available — requesting reviewer validation).
+- ✅ Python tests: 31/31 passed (manifest schema, .mdc frontmatter, glob specificity, managed blocks, numbering, **+ new context-budget / progressive-disclosure contract tests** that lock the lean-AGENTS.md shape so it can't silently regress)
+- ✅ Skill evals 6/6, routing evals 5/5, eval-case validation pass
 
 ## Example Output (Complex Tier)
 
-Tested against a multi-concern documentation monorepo with BMAD framework, 54 existing skills, `.cursor/rules/`, and 7 concern folders:
+Tested against the architect-docs monorepo (BMAD framework, 50+ existing skills, `.cursor/rules/`, multi-domain `docs/`), Claude runtime:
 
 ```
-Classification: Complex tier (driven by _bmad/ framework presence, 7 concern folders, 4 AI config systems)
+Classification: Complex tier (driven by _bmad/ framework presence, multiple concern folders, 4+ AI config systems)
 
 Files written:
-  AGENTS.md          — 4.1 KB — Workspace behavioral rules, scope boundaries, workflows reference
-  GOALS.md           — 2.4 KB — AI-inferred professional goals and priorities
-  CLAUDE-agentic-os.md — 2.4 KB — Companion config (scope isolation, naming, cross-refs)
-  .agents/.agentic-os-manifest.json — 764 B — Manifest for tracking/removal
+  AGENTS.md          — 5.2 KB — Always-on rules ONLY (scope isolation, cross-refs,
+                                naming, priority levels, verification) + Skills & Workflows index
+  .agents/skills/task-management/SKILL.md — 4.1 KB — Emitted on-demand skill: task format,
+                                backlog/daily/weekly/maintenance workflows, session evals (loads only when invoked)
+  .agents/skills/task-management/agents/openai.yaml — routing metadata
+  GOALS.md           — 3.9 KB — AI-inferred professional goals and priorities
+  CLAUDE-agentic-os.md — 1.5 KB — Companion config (existing CLAUDE.md untouched)
+  .agents/.agentic-os-manifest.json — Manifest for tracking/removal
 
-Gitignore: Updated with managed block (generated files are gitignored by default).
-Framework coexistence: Persona routing deferred to BMAD.
+AGENTS.md stayed within the ~10k context budget; step-by-step procedures were relocated to
+the task-management skill rather than inlined.
+Framework coexistence: Persona routing deferred to BMAD (orchestration-model skill not emitted).
+Track decision: tracked (shared AI configs already committed in this repo).
 ```
 
 ## Reviewer Ask

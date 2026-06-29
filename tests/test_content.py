@@ -333,3 +333,86 @@ class TestSkillStructure:
             assert (FIXTURES_DIR / name).is_dir(), (
                 f"Missing fixture: {name}"
             )
+
+    def test_context_budget_template_exists(self):
+        assert (SKILL_DIR / "templates" / "context-budget.md").exists(), (
+            "Missing template: context-budget.md"
+        )
+
+
+# ============================================================
+# Scenario 8: Lean AGENTS.md / progressive disclosure contract
+# ============================================================
+
+
+class TestContextBudget:
+    """Locks in the lean-AGENTS.md contract: the Complex example must keep its
+    AGENTS.md managed block within budget, carry a Skills & Workflows index, and
+    push step-by-step procedures into emitted on-demand skills rather than inline.
+    Guards against a regression back to the fat 'complete operational manual'.
+    """
+
+    # Generous ceiling for the example's managed block. Real generated AGENTS.md
+    # targets ~10k chars; the calibration example's block is far smaller.
+    MANAGED_BLOCK_CHAR_CEILING = 4000
+
+    def _managed_block(self):
+        example = SKILL_DIR / "examples" / "complex-output.md"
+        content = example.read_text()
+        start = re.search(
+            r"<!-- MANAGED BY AGENTIC-OS \| hash:sha256:[a-f0-9]+ \| DO NOT EDIT -->",
+            content,
+        )
+        assert start, "complex-output.md missing managed block start marker"
+        end_marker = "<!-- END MANAGED BY AGENTIC-OS -->"
+        end = content.index(end_marker, start.end())
+        return content[start.end():end]
+
+    def test_managed_block_within_budget(self):
+        block = self._managed_block()
+        assert len(block) <= self.MANAGED_BLOCK_CHAR_CEILING, (
+            f"AGENTS.md managed block in complex-output.md is {len(block)} chars "
+            f"(ceiling {self.MANAGED_BLOCK_CHAR_CEILING}). Move procedures to skills."
+        )
+
+    def test_managed_block_has_skills_index(self):
+        block = self._managed_block()
+        assert "Skills & Workflows" in block, (
+            "Lean AGENTS.md must carry a Skills & Workflows index for progressive disclosure"
+        )
+
+    def test_managed_block_does_not_inline_procedures(self):
+        """Procedures (backlog/daily/maintenance step lists) belong in emitted skills,
+        not inline in AGENTS.md. The block may reference them but must not embed them."""
+        block = self._managed_block().lower()
+        forbidden_inline = [
+            "backlog processing workflow",
+            "daily guidance workflow",
+            "## maintenance tasks",
+            "helpful prompts",
+        ]
+        for marker in forbidden_inline:
+            assert marker not in block, (
+                f"AGENTS.md managed block inlines procedure section '{marker}' — "
+                f"move it to an on-demand skill (progressive disclosure)."
+            )
+
+    def test_skill_emits_procedure_skills(self):
+        """SKILL.md must instruct emitting procedures as on-demand skills."""
+        skill = (SKILL_DIR / "SKILL.md").read_text()
+        assert "EMIT AS ON-DEMAND SKILLS" in skill
+        assert "task-management" in skill
+
+    def test_skill_defines_context_budget(self):
+        """SKILL.md must define an enforceable context budget for generated AGENTS.md."""
+        skill = (SKILL_DIR / "SKILL.md").read_text()
+        assert "Context Budget" in skill
+        assert "20,000" in skill or "20000" in skill
+
+    def test_complex_example_covers_all_runtimes(self):
+        """The Complex calibration example should demonstrate all four runtime outputs."""
+        example = (SKILL_DIR / "examples" / "complex-output.md").read_text()
+        for token in ["CLAUDE", ".cursor/rules/", ".clinerules", "MANAGED BY AGENTIC-OS"]:
+            assert token in example, (
+                f"complex-output.md missing runtime coverage marker: {token}"
+            )
