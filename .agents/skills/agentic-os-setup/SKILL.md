@@ -40,56 +40,91 @@ Check for an existing manifest at `.agents/.agentic-os-manifest.json`:
 
 `setup.sh` has already handled the "dumb" copying: directories, BACKLOG.md, Workflows/, .agents/skills/, symlinks, .gitignore template. Your job is the smart inference and generation:
 
-### 1. Create or update AGENTS.md
+### 1. Create or update AGENTS.md (lean, always-on rules ONLY)
 
-If `AGENTS.md` does NOT exist: generate a **complete** AGENTS.md that combines:
+AGENTS.md is loaded into the model's context on **every single turn**. Treat it as a
+strict budget, not a dumping ground. The framework's headline principle is progressive
+disclosure: keep durable RULES always-on in AGENTS.md, and move step-by-step PROCEDURES
+into on-demand skills under `.agents/skills/` that load only when invoked. Generating a
+fat "complete operational manual" inline is an anti-pattern — it burns tokens every turn
+and, on larger repos, overflows the runtime's context-file cap (commonly ~20,000 chars,
+after which the middle is silently truncated).
 
-**A) All standard agentic-os behavioral instructions** (these are NOT optional — they make the AI useful):
+See `templates/context-budget.md` for the full keep-inline-vs-emit-as-skill rubric.
+
+If `AGENTS.md` does NOT exist: generate a **lean** AGENTS.md.
+
+**A) KEEP INLINE in AGENTS.md (always-on rules — these make the AI safe and on-rails):**
 - How to Work With Files (read, write, list, search patterns)
-- Task File Format (full YAML frontmatter template: title, category, priority, status, dates, resource_refs)
-- Priority Levels — MUST use P0/P1/P2/P3 format exactly:
+- Scope boundaries / isolation rules between domains (repo-specific)
+- Cross-reference rules between related folders (repo-specific)
+- Naming standards (repo-specific patterns detected per domain)
+- Verification Discipline (identify → run → verify → only then claim done)
+- Interaction Style (direct, batch questions, never delete user content)
+- Writing Style Guidelines (avoid cliches, be direct and concise)
+- Priority Levels reference — MUST use P0/P1/P2/P3 format exactly:
   - **P0**: Critical/urgent, must do THIS WEEK (max 3 recommended)
   - **P1**: Important, has deadlines, affects others (max 5 recommended)
   - **P2**: Normal priority, can be scheduled (default)
   - **P3**: Low priority, nice-to-have
-- Backlog Processing Workflow (step-by-step: read → gather context → dedup check → clarify → create → summarize)
-- Daily Guidance Workflow (read tasks → filter active → read goals → recommend focus → flag blocked)
-- Goals Alignment rules (tie tasks to goals, flag orphan tasks)
-- Skills Reference table (categorized: planning, building, analysis, research, decisions, strategy, meetings, stakeholders)
-- Skill Routing Policy (execution-first: small task → direct edit, medium → plan+tdd, large → prd+plan+tdd)
-- Workflows Reference table (prompt → workflow file mapping)
-- Helpful Prompts section (examples: "Show my P0 and P1 tasks", "List blocked tasks", "Archive completed tasks", "Create an eval for this session")
-- Subagent Delegation patterns (when to use, when not to, delegation order, output contract)
-- Verification Discipline (identify → run → verify → only then claim done)
-- Interaction Style (direct, batch questions, never delete user content)
-- Session Evals (when to create, eval workflow steps)
-- Maintenance Tasks — MUST include ALL of these:
-  - Prune completed tasks (>30 days old → archive)
-  - Check priority distribution (warn if >3 P0 or >5 P1)
-  - Update AGENTS.md (when learning something important about user preferences or workflow, suggest adding it here)
-  - Review evals (weekly, apply learnings)
-- Writing Style Guidelines (avoid cliches, be direct and concise)
+- A single **Skills & Workflows reference table** (trigger phrase → which skill/workflow
+  to load). This is the index that makes progressive disclosure work.
+- A 2–3 line summary of any load-bearing **mandate** (e.g. an orchestration/sub-agent
+  model). Keep the mandate summary inline even though its detail moves to a skill —
+  otherwise the rule silently stops applying on turns when the skill isn't loaded.
 
-**B) Repo-specific customizations** (discovered during scanning):
-- **Workspace layout** — the ACTUAL directory structure two levels deep
-- **Task categories** — derived from concern domains found (not generic — use #devex-platform, #access-management, etc.)
-- **Scope boundaries** — real isolation rules between domains
-- **Cross-references** — real linkage rules between related folders
-- **Naming standards** — real patterns detected in each domain
+**B) EMIT AS ON-DEMAND SKILLS (procedures — write each as `.agents/skills/<name>/SKILL.md`,
+NOT inline in AGENTS.md):**
+- `task-management` — Task File Format (full YAML frontmatter template), Backlog
+  Processing Workflow, Daily Guidance Workflow, Goals Alignment rules, Session Evals,
+  Maintenance Tasks (prune >30d, priority-distribution check >3 P0 / >5 P1, review evals),
+  Helpful Prompts.
+- `orchestration-model` (ONLY if a delegation/sub-agent mandate applies, and `_bmad/` is
+  NOT present — see Framework Coexistence) — Subagent Delegation patterns: when to use,
+  when not to, delegation order, output contract, worked examples.
 
-The workspace layout should go **two levels deep** for major directories:
+Each emitted skill MUST be a valid skill pack: YAML frontmatter with `name` (matching its
+folder) and a trigger-bearing `description`, a `## When to Use` and `## When Not to Use`
+section, and a clear numbered process section. Reference these emitted skills from the
+AGENTS.md Skills & Workflows table by trigger phrase. Add every emitted skill file to the
+manifest and (unless tracking) the gitignore managed block, exactly like other generated
+files — see Write Protocol.
+
+**C) Repo-specific customizations** (discovered during scanning, folded into the inline
+rules above):
+- **Workspace layout** — the ACTUAL directory structure, compact. Prefer a flat bullet
+  list over a deep ASCII tree; go two levels deep only for the major concern domains.
+- **Task categories** — derived from concern domains found (not generic — use
+  `#devex-platform`, `#access-management`, etc.)
+
+Compact workspace-layout example (bullets, two levels deep for major dirs only):
 ```
-docs/workitems/           — Cross-project work items (ZSP, CI, Crossplane)
-docs/workitems/devex/     — DevEx Platform project (130+ items, ADO-synced)
-docs/designs/             — Architecture decisions and designs
-  ├── access-management/  — ZSP AWS access model
-  ├── github-jira-migration-plan/
-  └── ... (11 initiatives)
+- docs/workitems/ — cross-project work items (ZSP, CI, Crossplane);
+  docs/workitems/devex/ — DevEx Platform (130+ items, ADO-synced, PRIMARY)
+- docs/designs/<initiative>/ — architecture/designs (access-management,
+  github-jira-migration-plan, … 11 initiatives)
 ```
 
-**Critical:** The behavioral sections (A) must be COMPLETE — don't summarize them into one-liners. The repo-specific sections (B) replace the generic equivalents from the template. The result should be a full operational manual for the AI, not a summary.
+**Critical:** AGENTS.md is rules + an index, NOT a manual. The behavioral procedures live
+in emitted skills (B) and load on demand. The repo-specific rules (C) replace the generic
+template equivalents. Verify the result against the context budget below before writing.
 
-If `AGENTS.md` already exists: extend it with a managed block containing agentic-os behavioral rules (scope isolation, cross-references, etc.) — same as Antigravity adapter behavior.
+If `AGENTS.md` already exists: extend it with a managed block containing only the always-on
+rules (scope isolation, cross-references, naming, and the Skills & Workflows index) — same
+as Antigravity adapter behavior. Still emit the procedure skills (B) separately.
+
+### 1b. Context Budget (enforce before writing AGENTS.md)
+
+- **Target:** generated AGENTS.md ≤ ~10,000 chars (≈ 2,500 tokens). Hard ceiling: the
+  runtime context-file cap, commonly ~20,000 chars — never generate above it, since
+  content past the cap is head/tail-truncated and the middle is lost.
+- **If inline content would exceed the target:** move the lowest-priority sections to
+  on-demand skills (per the B list and `templates/context-budget.md`) and leave a one-line
+  pointer in the Skills & Workflows table. Do not shrink by deleting rules — relocate them.
+- **Tier coupling:** Simple/Multi repos rarely approach the budget. **Complex** repos and
+  any repo with a framework (`_bmad/`) MUST split procedures into skills — never inline the
+  full manual. State the resulting AGENTS.md char count in the proposal so the user can see
+  it stayed within budget.
 
 ### 2. Create or update AI tool wrapper files
 
@@ -221,7 +256,7 @@ Based on the classified tier and detected signals, assemble a configuration prop
 | Zero | Nothing — repo is empty. Suggest running classic `setup.sh` instead. |
 | Simple | 1 config file per targeted runtime. Minimal: basic project context, no persona routing. |
 | Multi | Config files per runtime + AGENTS.md with persona definitions. Persona routing, scope isolation. |
-| Complex | Full output: AGENTS.md, GOALS.md (if none exists), config files with persona routing, scope isolation, cross-reference enforcement, quality gates. |
+| Complex | Lean AGENTS.md (always-on rules + Skills & Workflows index), GOALS.md (if none exists), emitted on-demand skills for procedures (task-management, and orchestration-model unless `_bmad/` present), config files with persona routing, scope isolation, cross-reference enforcement, quality gates. AGENTS.md MUST stay within the context budget — procedures go to skills, never inline. |
 
 ### Assembly Process
 
@@ -246,6 +281,21 @@ When other AI configs exist (.cursor/rules/, CLAUDE.md, .clinerules):
 - Do NOT modify or replace them
 - Generate agentic-os rules as additive companion files (see adapter specs for pre-existing file behavior)
 - Check for glob collisions with existing .cursor/rules/ before proposing new ones
+
+## MCP Integrations — On-Demand, Not All Up Front
+
+MCP servers (Slack, Linear, Google Calendar, Atlassian, Granola under `System/integrations/`)
+each load their full tool schemas into the model's context. A handful of integrations can
+add tens of thousands of tokens per turn — the same context-budget problem as a fat
+AGENTS.md, but in the tool surface.
+
+When proposing or documenting MCP integrations:
+- Recommend enabling only the integrations the repo actually uses, not the whole set.
+- Note that an integration with a large or recursive tool schema is the biggest per-turn
+  offender — suggest enabling it on demand for the sessions that need it, then disabling it.
+- Keep domain-scoped servers scoped (e.g. restrict to the specific tool domain rather than
+  exposing all of a server's tools) when the runtime supports it.
+- Tool-list changes typically take effect on a fresh session, not mid-conversation.
 
 ## Diff Preview Protocol
 
@@ -375,8 +425,9 @@ After the user approves the proposal (fully or selectively), write files followi
 ### Write Sequence
 
 1. Create approved configuration files (CLAUDE.md, .cursor/rules/*.mdc, .clinerules, AGENTS.md extension)
-2. Write the manifest (`.agents/.agentic-os-manifest.json`)
-3. Update .gitignore (unless `--track` was specified)
+2. Create approved emitted skill packs (`.agents/skills/<name>/SKILL.md` + `agents/openai.yaml` for each procedure skill split out of AGENTS.md)
+3. Write the manifest (`.agents/.agentic-os-manifest.json`) — list every config file AND every emitted skill file
+4. Update .gitignore (unless `--track` was specified) — include the emitted skill paths so privacy/removal covers them too
 
 ### Manifest Schema
 

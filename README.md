@@ -183,12 +183,17 @@ Semantics by location: `Tasks/**/*.md` = actionable work, `Knowledge/**/*.md` = 
 ### The Memory Stack
 
 ```
-AGENTS.md        →    Instructions layer (how AI behaves)
+AGENTS.md        →    Instructions layer (always-on RULES only — kept lean)
 GOALS.md         →    Priority layer (what matters)
 Tasks/**/*.md     →    State layer (current work)
 Knowledge/**/*.md →    Context layer (reference)
-.agents/skills/* →    Capability layer (how the agent executes specialized workflows)
+.agents/skills/* →    Capability layer (PROCEDURES — load on demand)
 ```
+
+AGENTS.md holds always-on rules and an index; step-by-step procedures live in
+`.agents/skills/` and load on demand (progressive disclosure). The AI-assisted setup keeps
+generated AGENTS.md within a context budget and emits bulky procedures as on-demand skills
+rather than inlining them — so every turn stays cheap.
 
 ### Privacy First
 
