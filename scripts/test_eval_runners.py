@@ -321,6 +321,26 @@ def test_skill_prompt_is_not_contaminated() -> None:
         check(f"{skill} scaffolding leaks no scored vocabulary", not leaked, f"leaked {sorted(leaked)}")
 
 
+def test_results_record_their_own_caveats() -> None:
+    """A green run must carry what it is green about, in the file as well as on stdout."""
+    import subprocess
+
+    for script, flag, key, expect in [
+        ("run_skill_evals.py", ["--skill", "tdd"], "judge_caveat", "blind to stance"),
+        ("run_routing_evals.py", [], "provider_caveat", "not an agent"),
+    ]:
+        before = set((ROOT / "Evals/skills/results").glob("*.json"))
+        proc = subprocess.run([sys.executable, str(SCRIPTS / script), *flag],
+                              capture_output=True, text=True, cwd=ROOT)
+        check(f"{script} prints a caveat", "NOTE:" in proc.stdout, proc.stdout[:120])
+        written = set((ROOT / "Evals/skills/results").glob("*.json")) - before
+        check(f"{script} wrote a results file", len(written) == 1)
+        for path in written:
+            payload = json.loads(path.read_text())
+            check(f"{script} records {key}", expect in str(payload.get(key)), str(payload.get(key)))
+            path.unlink()
+
+
 def main() -> int:
     stub = Stub()
     try:
@@ -333,6 +353,7 @@ def main() -> int:
         test_routing_prompt(stub)
         test_reject_phrases()
         test_overlap_judge_cannot_detect_stance()
+        test_results_record_their_own_caveats()
         test_skill_prompt_is_not_contaminated()
     finally:
         stub.stop()

@@ -255,6 +255,10 @@ def main() -> int:
     payload = {
         "timestamp_utc": ts,
         "provider": args.provider,
+        "provider_caveat": (
+            "built-in keyword table, not an agent; measures the table, not skill routing"
+            if args.provider == "keyword" else None
+        ),
         "summary": {
             "total_cases": total,
             "passed_cases": passed,
@@ -265,6 +269,10 @@ def main() -> int:
     }
     out.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
 
+    if args.provider == "keyword":
+        print("NOTE: --provider keyword scores the built-in keyword table in this file, not an "
+              "agent's routing. Use --provider openai to route with a model given the skill "
+              "catalogue and the AGENTS.md policy.")
     print(f"PASS RATE: {passed}/{total} = {pass_rate:.3f}")
     print(f"RESULTS: {out.relative_to(ROOT)}")
     for r in results:

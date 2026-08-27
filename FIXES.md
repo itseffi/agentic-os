@@ -724,9 +724,20 @@ words and wrong stance, passes.
 
 `test_overlap_judge_cannot_detect_stance` in `scripts/test_eval_runners.py` pins this as a
 known gap, so it is visible rather than implied, and tells whoever closes it to update this
-section. `--judge overlap` now prints the caveat on every run and records it in the results
-file. Only `--judge openai` evaluates the claim, and it is verified against a stub, not a
+section. Only `--judge openai` evaluates the claim, and it is verified against a stub, not a
 real model.
+
+Both runners now say what a green run is green about, on stdout and in the results file, so
+a pass rate cannot be quoted as evidence of correctness on its own:
+
+```
+skill evals  judge: overlap    judge_caveat:    token-set overlap; blind to stance and negation
+routing      provider: keyword provider_caveat: built-in keyword table, not an agent; measures
+                                                the table, not skill routing
+```
+
+`test_results_record_their_own_caveats` runs both scripts and asserts the NOTE appears on
+stdout and the caveat key is present in the written file, so neither can quietly disappear.
 
 ## 19. The repository had no tests at all (APPLIED)
 
