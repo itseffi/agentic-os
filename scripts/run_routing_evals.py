@@ -87,10 +87,13 @@ def _model_system_prompt() -> str:
 
 
 def route_skills_via_model(text: str, *, base_url: str, model: str, api_key: str) -> set[str]:
-    """Ask a model to route, then map its answer onto the known skill names.
+    """Ask a model to route, then map its JSON answer onto the known skill names.
 
-    Parses a JSON array when the model returns one, and otherwise falls back to scanning for
-    known skill names, since models routinely wrap JSON in prose.
+    The bracket search tolerates a JSON array wrapped in prose or a fenced code block. It
+    deliberately does not fall back to scanning the reply for skill names: that scan is blind
+    to negation, so "tdd does not apply here" selected tdd, and "this is not a brainstorming
+    task" selected brainstorming. A reply carrying no array is a protocol failure, and saying
+    so beats guessing the opposite of what the model meant.
     """
     reply = query_chat(
         base_url=base_url,
@@ -99,19 +102,23 @@ def route_skills_via_model(text: str, *, base_url: str, model: str, api_key: str
         system_prompt=_model_system_prompt(),
         user_input=text,
     )
-    known = set(KEYWORD_RULES)
 
     match = re.search(r"\[.*?\]", reply, re.DOTALL)
-    if match:
-        try:
-            parsed = json.loads(match.group(0))
-            if isinstance(parsed, list):
-                return {str(x).strip() for x in parsed} & known
-        except json.JSONDecodeError:
-            pass
+    if not match:
+        raise ModelError(f"reply contained no JSON array of skill names: {reply[:120].strip()!r}")
+    try:
+        parsed = json.loads(match.group(0))
+    except json.JSONDecodeError as exc:
+        raise ModelError(f"could not parse skill array: {match.group(0)[:120]!r}") from exc
+    if not isinstance(parsed, list):
+        raise ModelError(f"expected a JSON array of skill names, got {type(parsed).__name__}")
 
-    low = reply.lower()
-    return {s for s in known if re.search(_boundary_pattern(s), low)}
+    named = {str(x).strip() for x in parsed}
+    known = set(KEYWORD_RULES)
+    unknown = named - known
+    if unknown:
+        raise ModelError(f"reply named unknown skill(s): {sorted(unknown)}")
+    return named
 
 
 def validate_cases(cases: list[dict]) -> list[str]:

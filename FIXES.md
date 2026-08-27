@@ -543,13 +543,29 @@ take `--provider`.
 `run_routing_evals.py` gains `--provider {keyword,openai}`, defaulting to `keyword` so
 offline runs are unchanged. The `openai` path sends the skill catalogue built from each
 `SKILL.md` frontmatter and the Skill Routing Policy section lifted from `AGENTS.md`, then
-parses a JSON array of skill names, falling back to scanning for known names when a model
-wraps its answer in prose. Verified against a stub:
+parses a JSON array of skill names. Verified against a stub:
 
 ```
-names every skill        : True
-includes SKILL.md desc   : True
-includes AGENTS.md policy: True
+every skill named        : True
+SKILL.md descriptions    : True
+AGENTS.md routing policy : True
+user message is the case : True
+["tdd"]                 -> ['tdd']
+["tdd", "verification"] -> ['tdd', 'verification']
+[]                      -> []
+fenced ```json [...]``` -> ['tdd']
+```
+
+The first version also fell back to scanning the reply for skill names when it carried no
+array. That scan was blind to negation, exactly like item 18: `tdd does not apply here`
+selected tdd, and `this is not a brainstorming task` selected brainstorming, inverting the
+model's answer. The fallback is gone. A reply with no array is a protocol failure and is
+reported as one, which is better than guessing the opposite of what the model meant:
+
+```
+NEGATED prose      -> ModelError: reply contained no JSON array of skill names: 'tdd does not apply here.'
+bare prose         -> ModelError: reply contained no JSON array of skill names: 'I think you want the tdd skill here.'
+unknown skill name -> ModelError: reply named unknown skill(s): ['not-a-real-skill']
 ```
 
 `run_skill_evals.py:174-181` now sends the skill under test, built from its own `SKILL.md`
