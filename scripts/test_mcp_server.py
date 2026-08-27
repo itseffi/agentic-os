@@ -54,7 +54,9 @@ def _stub_mcp() -> None:
     sys.modules["mcp.server"].Server = _Server
     sys.modules["mcp.server"].NotificationOptions = object
     sys.modules["mcp.server.models"].InitializationOptions = object
-    sys.modules["mcp.types"].Tool = object
+    # dict, not object: types.Tool(...) is called with keywords, so a bare object() rejects
+    # them and handle_list_tools cannot be exercised at all.
+    sys.modules["mcp.types"].Tool = dict
     sys.modules["mcp.types"].TextContent = _TextContent
     sys.modules["mcp.types"].ImageContent = object
     sys.modules["mcp.types"].EmbeddedResource = object
@@ -189,6 +191,46 @@ def test_status_updates_do_not_grow_the_file() -> None:
     check("the status is applied", "status: d" in path.read_text())
 
 
+def test_docs_do_not_advertise_missing_tools() -> None:
+    """Every tool named in a docs table must actually be advertised by the server.
+
+    generate_eval was removed from the server but stayed in Tutorials/session-evals.md, in a
+    tool table and two diagrams, telling readers to call something that no longer existed.
+    Stale help text was the same failure one item earlier.
+    """
+    import re
+
+    advertised = {tool["name"] for tool in asyncio.run(SERVER.handle_list_tools())}
+    check("the server advertises tools at all", len(advertised) > 5, str(len(advertised)))
+
+    # Only tables actually headed `| Tool |`, and only docs describing THIS server.
+    # System/integrations/** documents other MCP servers, and judgement-value tables are
+    # headed `| Value |`; an earlier version of this check swept in all of them.
+    documented: list[tuple[str, str]] = []
+    for path in sorted(ROOT.glob("**/*.md")):
+        parts = path.relative_to(ROOT).parts
+        if ".git" in parts or path.name == "FIXES.md" or "integrations" in parts:
+            continue
+        in_tool_table = False
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if re.match(r"^\|\s*Tool\s*\|", line, re.IGNORECASE):
+                in_tool_table = True
+                continue
+            if in_tool_table:
+                if not line.startswith("|"):
+                    in_tool_table = False
+                    continue
+                if re.match(r"^\|[\s:|-]+\|?\s*$", line):
+                    continue
+                match = re.match(r"^\|\s*`([a-z][a-z0-9_]+)`\s*\|", line)
+                if match:
+                    documented.append((path.relative_to(ROOT).as_posix(), match.group(1)))
+
+    check("some tool tables were found", bool(documented), "no markdown tool tables matched")
+    unknown = [(doc, name) for doc, name in documented if name not in advertised]
+    check("no doc advertises a tool the server does not have", not unknown, str(unknown))
+
+
 def main() -> int:
     test_create_task_refuses_to_overwrite()
     test_get_system_status_survives_incomplete_frontmatter()
@@ -196,6 +238,7 @@ def main() -> int:
     test_create_task_validates_its_inputs()
     test_handlers_survive_null_arguments()
     test_status_updates_do_not_grow_the_file()
+    test_docs_do_not_advertise_missing_tools()
 
     if FAILURES:
         print(f"FAIL: {len(FAILURES)} of {CHECKS} check(s) failed")

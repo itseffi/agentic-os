@@ -52,10 +52,10 @@ Session evals capture structured snapshots of your AI sessions:
 └───────────────┬─────────────────────────┘
                 ↓
 ┌─────────────────────────────────────────┐
-│  generate_eval                          │
-│  - Parses session trace                 │
-│  - Extracts key patterns                │
-│  - Creates markdown eval file           │
+│  Write the eval file yourself           │
+│  - Summarise what was asked             │
+│  - Note what worked and what did not    │
+│  - Save to Evals/YYYY-MM-DD-name.md     │
 └───────────────┬─────────────────────────┘
                 ↓
 ┌─────────────────────────────────────────┐
@@ -87,9 +87,13 @@ Evals create a feedback loop. Without them, you repeat the same mistakes. With t
 
 ## Tools Available
 
+Eval files are written by hand or by the agent, following the template in `Evals/README.md`.
+There is no tool that generates one from a session trace: the MCP server advertised a
+`generate_eval` tool that imported two modules absent from this repository, so every call
+failed. It was removed rather than left advertised.
+
 | Tool | Purpose | Key Parameters |
 |------|---------|----------------|
-| `generate_eval` | Create eval from session | `session_id` (or `'recent'`) |
 | `list_evals` | View all evals | `limit`, `judgement` filter |
 | `annotate_eval` | Add judgement/notes | `eval_file`, `judgement`, `annotation` |
 | `get_eval_summary` | Aggregate stats | none |
@@ -156,7 +160,7 @@ Table of tools and counts
            Yes  │  No → Skip
                 ↓
 ┌─────────────────────────────────────────┐
-│ generate_eval session_id='recent'       │
+│ Write Evals/YYYY-MM-DD-description.md   │
 └───────────────┬─────────────────────────┘
                 ↓
 ┌─────────────────────────────────────────┐

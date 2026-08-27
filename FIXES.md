@@ -444,7 +444,8 @@ imported anywhere in the repo.
 anywhere in the repository, so the tool is advertised in `list_tools` and always returns
 `{"success": false, "error": "Trace parser not available: ..."}`.
 
-Dropped the tool. Advertising a capability that cannot work is worse than not offering it,
+Dropped the tool, and then the docs that still advertised it. Advertising a capability that
+cannot work is worse than not offering it,
 and shipping two modules to satisfy a stale import would be inventing a feature rather than
 fixing a bug. The handler and its `types.Tool` entry are gone, with a comment where they were
 recording what restoring it would require:
@@ -454,6 +455,19 @@ tools advertised: 13
 generate_eval still listed? False
 unknown tool response: Unknown tool: generate_eval
 ```
+
+Removing it from `handle_list_tools` was not enough. `Tutorials/session-evals.md` still
+documented it in a tool table and two pipeline diagrams, telling readers to call something
+that no longer existed, which is the same failure as the stale `--judge openai` help text in
+item 21. The tutorial now describes writing an eval file directly and says plainly why there
+is no generator.
+
+`test_docs_do_not_advertise_missing_tools` compares every tool named in a table headed
+`| Tool |` against what the server actually advertises. Two false starts on the scoping: the
+stub had `Tool = object`, so `handle_list_tools` could not be called at all and had never
+been exercised by any of the 28 existing checks; and matching every backticked first column
+swept in judgement values and the integration docs, which describe other MCP servers
+entirely.
 
 ## 14. The shipped GOALS.md and the generated one are different documents (APPLIED)
 
