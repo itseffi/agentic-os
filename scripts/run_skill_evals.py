@@ -206,8 +206,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--api-key",
-        default=os.environ.get("OPENAI_API_KEY", "none"),
-        help="API key for --provider openai.",
+        default=os.environ.get("OPENAI_API_KEY", ""),
+        help="API key. Omit for a local endpoint that needs none; no header is sent.",
     )
     args = parser.parse_args()
 

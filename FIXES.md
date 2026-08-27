@@ -1,6 +1,6 @@
 # Fix notes
 
-Status: items 3, 8, 9, 10, 11, 15, 16, 17, 18 and 19 are applied. The rest are documented only. Findings from an audit of
+Status: items 3, 8, 9, 10, 11, 15, 16, 17, 18, 19 and 20 are applied. The rest are documented only. Findings from an audit of
 `System/mcp/server.py`, `scripts/`, and `setup.sh`. Each fix below was checked against the
 real code path before being written down.
 
@@ -768,6 +768,29 @@ skill prompt shared no scored vocabulary at all, but the overlap came from the s
 and tests the scaffolding around it, which is where the old `verification-oriented guidance`
 contamination lived. The description still overlaps the expectations heavily, which is a
 standing argument for `--judge openai` over token overlap.
+
+## 20. Runners sent a bogus `Bearer none` credential (APPLIED)
+
+Fixed in `scripts/model_client.py` and both runners' `--api-key` defaults.
+
+`--api-key` defaulted to the literal string `"none"`, which was sent verbatim:
+
+```
+with the shipped --api-key default, the header sent is: 'Bearer none'
+```
+
+That gives a local endpoint needing no key a bogus credential, and a real endpoint an auth
+error rather than a clear statement that no key was configured. I noted this in the original
+audit and then never fixed it.
+
+The default is now empty, and `query_chat` sends no `Authorization` header unless a key is
+actually set. Covered by `test_auth_header`:
+
+```
+api_key=''        sends None
+api_key='none'    sends None
+api_key='sk-real' sends 'Bearer sk-real'
+```
 
 ## Verifying the fixes
 

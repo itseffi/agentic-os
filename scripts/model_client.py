@@ -54,13 +54,17 @@ def query_chat(
         ],
         "temperature": temperature,
     }
+    headers = {"Content-Type": "application/json"}
+    # Only authenticate when a key is actually set. The runners used to default to the literal
+    # string "none", which sends `Bearer none`: a bogus credential to local endpoints that need
+    # no key, and an auth error from real ones instead of a clear "no key configured".
+    if api_key and api_key.lower() not in {"none", "null"}:
+        headers["Authorization"] = f"Bearer {api_key}"
+
     req = request.Request(
         base_url.rstrip("/") + "/chat/completions",
         data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
+        headers=headers,
         method="POST",
     )
 

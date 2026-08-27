@@ -175,10 +175,16 @@ def main() -> int:
         default=os.environ.get("OPENAI_BASE_URL", "http://localhost:8080/v1"),
         help="OpenAI-compatible base URL for --provider openai.",
     )
-    parser.add_argument("--model", default=os.environ.get("OPENAI_MODEL", ""),
-                        help="Model id for --provider openai.")
-    parser.add_argument("--api-key", default=os.environ.get("OPENAI_API_KEY", "none"),
-                        help="API key for --provider openai.")
+    parser.add_argument(
+        "--model",
+        default=os.environ.get("OPENAI_MODEL", ""),
+        help="Model id for --provider openai.",
+    )
+    parser.add_argument(
+        "--api-key",
+        default=os.environ.get("OPENAI_API_KEY", ""),
+        help="API key. Omit for a local endpoint that needs none; no header is sent.",
+    )
     args = parser.parse_args()
 
     if args.provider == "openai" and not args.model:

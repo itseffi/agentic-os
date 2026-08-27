@@ -60,6 +60,7 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self):  # noqa: N802
         body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
         self.server.last_request = json.loads(body)
+        self.server.last_headers = dict(self.headers)
         mode = self.server.mode
         if mode == "http500":
             payload = b'{"error":{"message":"upstream exploded"}}'
@@ -91,6 +92,7 @@ class Stub:
         self.server.mode = "ok"
         self.server.reply = '["tdd"]'
         self.server.last_request = None
+        self.server.last_headers = {}
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
     @property
@@ -165,6 +167,16 @@ def test_case_validation() -> None:
 
 
 # ------------------------------------------------------------------------- model client
+
+def test_auth_header(stub: Stub) -> None:
+    """No key means no Authorization header, not `Bearer none`."""
+    stub.set(mode="ok", reply="hi")
+    for key, expected in [("", None), ("none", None), ("sk-real", "Bearer sk-real")]:
+        model_client.query_chat(base_url=stub.base_url, model="m", api_key=key,
+                                system_prompt="s", user_input="u")
+        sent = stub.server.last_headers.get("Authorization")
+        check(f"api_key={key!r} sends {expected!r}", sent == expected, f"sent {sent!r}")
+
 
 def test_model_client_failures(stub: Stub) -> None:
     """Every failure mode must surface as ModelError, not a traceback or a None."""
@@ -315,6 +327,7 @@ def main() -> int:
         test_boundary_matching()
         test_closed_world_scoring()
         test_case_validation()
+        test_auth_header(stub)
         test_model_client_failures(stub)
         test_routing_via_model(stub)
         test_routing_prompt(stub)
