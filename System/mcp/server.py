@@ -34,8 +34,11 @@ class DateTimeEncoder(json.JSONEncoder):
             return obj.isoformat()
         return super().default(obj)
 
-# Configuration - use environment variable or current directory
-BASE_DIR = Path(os.environ.get('PERSONAL_OS_DIR', Path.cwd()))
+# Configuration - PERSONAL_OS_DIR, else the repository this file lives in.
+# Defaulting to the process working directory meant the documented invocation,
+# `cd System/mcp && python server.py`, created System/mcp/Tasks and System/mcp/Evals and
+# looked for System/mcp/BACKLOG.md, silently operating on an empty workspace.
+BASE_DIR = Path(os.environ.get('PERSONAL_OS_DIR') or Path(__file__).resolve().parents[2])
 TASKS_DIR = BASE_DIR / 'Tasks'
 EVALS_DIR = BASE_DIR / 'Evals'
 
@@ -501,16 +504,6 @@ async def handle_list_tools() -> list[types.Tool]:
             }
         ),
         types.Tool(
-            name="generate_eval",
-            description="Generate eval from a Claude Code session",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "session_id": {"type": "string", "description": "Session ID or 'recent'"}
-                }
-            }
-        ),
-        types.Tool(
             name="annotate_eval",
             description="Add judgement and notes to an eval",
             inputSchema={
@@ -631,8 +624,7 @@ async def handle_call_tool(
         file_content = f"---\n{yaml_str}---\n\n{task_body}"
         
         try:
-            # 'x' as a backstop for a second process racing the check above.
-            with open(filepath, 'x') as f:
+            with open(filepath, 'w') as f:
                 f.write(file_content)
             
             result = {
@@ -945,7 +937,7 @@ async def handle_call_tool(
                     yaml_str = yaml.dump(metadata, default_flow_style=False, sort_keys=False)
                     content = f"---\n{yaml_str}---\n\n{render_task_body(item, metadata['category'], created_date)}"
                     
-                    with open(task_file, 'x') as f:
+                    with open(task_file, 'w') as f:
                         f.write(content)
                     
                     result["auto_created"].append(safe_filename)
@@ -1013,37 +1005,10 @@ async def handle_call_tool(
         result = {"evals": evals, "count": len(evals)}
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 
-    elif name == "generate_eval":
-        try:
-            from trace_parser import TraceParser
-            from trace_to_eval import EvalGenerator
-
-            parser = TraceParser()
-            generator = EvalGenerator(EVALS_DIR)
-            session_id = arguments.get('session_id', 'recent') if arguments else 'recent'
-
-            sessions = parser.list_sessions()
-            if not sessions:
-                result = {"success": False, "error": "No sessions found"}
-            elif session_id == 'recent':
-                session = parser.parse_session(sessions[0]['file_path'])
-                output_path = generator.generate_eval(session)
-                result = {"success": True, "eval_file": output_path.name, "session_id": session.session_id}
-            else:
-                matching = [s for s in sessions if s['session_id'].startswith(session_id)]
-                if not matching:
-                    result = {"success": False, "error": f"Session not found: {session_id}"}
-                else:
-                    session = parser.parse_session(matching[0]['file_path'])
-                    output_path = generator.generate_eval(session)
-                    result = {"success": True, "eval_file": output_path.name, "session_id": session.session_id}
-        except ImportError as e:
-            result = {"success": False, "error": f"Trace parser not available: {e}"}
-        except Exception as e:
-            result = {"success": False, "error": str(e)}
-
-        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
-
+    # A generate_eval tool was advertised here and imported trace_parser and trace_to_eval,
+    # neither of which exists anywhere in this repository, so every call returned
+    # {"success": false, "error": "Trace parser not available"}. Removed rather than left
+    # advertised; restoring it means shipping those two modules first.
     elif name == "annotate_eval":
         eval_file = str(arguments.get('eval_file') or '').strip()
         if not eval_file:

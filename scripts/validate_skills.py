@@ -106,6 +106,24 @@ for md in ROOT.rglob("*.md"):
     if ".claude/skills/" in text and rel != Path("System/integrations/granola/SETUP_SKILL.md"):
         errors.append(f"{rel}: contains direct .claude/skills path")
 
+# The shipped GOALS.md and the one setup.sh writes must stay one format. They diverged into
+# two documents sharing a single heading, so a user who filled in the template and then ran
+# setup got a file organised on entirely different lines.
+goals_md = ROOT / "GOALS.md"
+setup_sh = ROOT / "setup.sh"
+if goals_md.exists() and setup_sh.exists():
+    generated = setup_sh.read_text(encoding="utf-8")
+    if 'cat > "GOALS.md" << EOF' in generated:
+        template = generated.split('cat > "GOALS.md" << EOF\n', 1)[1].split("\nEOF\n", 1)[0]
+        want = [l.strip() for l in template.splitlines() if l.startswith("#")]
+        have = [l.strip() for l in goals_md.read_text(encoding="utf-8").splitlines()
+                if l.startswith("#")]
+        if want != have:
+            errors.append(
+                "GOALS.md headings differ from the template setup.sh writes; "
+                f"{len(set(want) ^ set(have))} heading(s) differ"
+            )
+
 if errors:
     print(f"FAIL: checked {checked} skill(s), found {len(errors)} issue(s)")
     for err in errors:

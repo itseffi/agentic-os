@@ -1,11 +1,11 @@
 # Fix notes
 
-Status: items 1 to 11 and 15 to 28 are applied. Items 12, 13 and 14 remain decisions. Findings from an audit of
+Status: all 28 items are applied. Findings from an audit of
 `System/mcp/server.py`, `scripts/`, and `setup.sh`. Each fix below was checked against the
 real code path before being written down.
 
-Open question: items 12, 13 and 14 are design calls, not mechanical fixes. They need a
-decision before anyone patches them.
+Items 12, 13 and 14 were design calls rather than mechanical fixes; the reasoning for each
+choice is recorded in its section.
 
 ## 1. create_task overwrites existing tasks (APPLIED)
 
@@ -96,8 +96,8 @@ Matching on the errno does not rescue it. A directory sitting at the target path
 errno 17 with the byte-identical `File exists` message, so `[Errno 17]` does not mean "a
 task file is already there". The response also leaks the absolute filesystem path.
 
-Keep `'x'` as a backstop against a second process writing the same path, but it is not
-load-bearing. The explicit check is the fix.
+So `'x'` is not used. The explicit check is the fix, and adding a second mechanism for the
+same thing only reintroduces the error channel the check exists to avoid.
 
 ## 2. get_system_status crashes on incomplete frontmatter (APPLIED)
 
@@ -402,7 +402,7 @@ FileNotFoundError: [Errno 2] No such file or directory:
 
 Post-fix, both runners recreate the directory and complete normally.
 
-## 12. The documented MCP run command targets the wrong workspace
+## 12. The documented MCP run command targets the wrong workspace (APPLIED)
 
 `System/README.md:36-40` says:
 
@@ -417,32 +417,45 @@ runs at import, so following the documented command creates `System/mcp/Tasks/` 
 `System/mcp/Evals/` and looks for `System/mcp/BACKLOG.md`. The server only finds the real
 workspace if `PERSONAL_OS_DIR` is set, which the README does not mention.
 
-Two options, needing a decision:
+Took the robust option. `BASE_DIR` now resolves from the file rather than the process:
 
-- Document `PERSONAL_OS_DIR` in the README and leave the default alone.
-- Default to the repo root instead of the process working directory:
+```python
+BASE_DIR = Path(os.environ.get('PERSONAL_OS_DIR') or Path(__file__).resolve().parents[2])
+```
 
-  ```python
-  BASE_DIR = Path(os.environ.get('PERSONAL_OS_DIR') or Path(__file__).resolve().parents[2])
-  ```
+Verified from the directory the old docs told you to run in:
 
-  `parents[2]` resolves to the repo root from `System/mcp/server.py`, verified.
+```
+invoked from System/mcp -> BASE_DIR = /home/user/agentic-os
+correct repo root? True
+```
 
-The second is more robust but changes behaviour for anyone already relying on cwd.
+`System/README.md` now shows `python System/mcp/server.py` from the repository root and
+documents `PERSONAL_OS_DIR` for pointing at another workspace. This changes behaviour for
+anyone who was relying on cwd, which is the point: relying on it silently produced an empty
+workspace.
 
 Unrelated but adjacent: `System/requirements.txt` lists `anthropic>=0.18.0`, which is not
 imported anywhere in the repo.
 
-## 13. generate_eval imports modules that do not exist
+## 13. generate_eval imports modules that do not exist (APPLIED)
 
 `System/mcp/server.py:947` imports `trace_parser` and `trace_to_eval`. Neither exists
 anywhere in the repository, so the tool is advertised in `list_tools` and always returns
 `{"success": false, "error": "Trace parser not available: ..."}`.
 
-Needs a decision: ship the two modules, or drop the tool from `handle_list_tools` so it
-stops being advertised as available.
+Dropped the tool. Advertising a capability that cannot work is worse than not offering it,
+and shipping two modules to satisfy a stale import would be inventing a feature rather than
+fixing a bug. The handler and its `types.Tool` entry are gone, with a comment where they were
+recording what restoring it would require:
 
-## 14. The shipped GOALS.md and the generated one are different documents
+```
+tools advertised: 13
+generate_eval still listed? False
+unknown tool response: Unknown tool: generate_eval
+```
+
+## 14. The shipped GOALS.md and the generated one are different documents (APPLIED)
 
 The `GOALS.md` committed to the repository and the one `setup.sh` writes share exactly one
 heading, `## Ongoing`. Even the title differs.
@@ -460,8 +473,22 @@ are readable by an agent, since `AGENTS.md` only says to read `GOALS.md` for pri
 without pinning a format, so nothing breaks outright. But a user who fills in the committed
 template and then runs setup gets a document organised on entirely different lines.
 
-Needs a decision: make the generated file match the shipped template's structure, or
-replace the shipped template with the generated layout so there is one format.
+Replaced the shipped template with the generated layout. The interview answers do not map
+onto a goals-and-key-results structure, so bending the generated file into the template's
+shape would have lost content; bending the template into the generated shape loses nothing
+and means running setup fills in the file you were already looking at.
+
+`GOALS.md` is regenerated from the heredoc in `setup.sh`, with each shell interpolation
+replaced by the placeholder a hand-editing user should fill in. It was still the unedited
+template, last touched in `eadbe92`, so nothing was overwritten.
+
+`validate_skills.py` now compares the headings in `GOALS.md` against the heredoc and fails
+when they diverge, which is what let them drift into two documents in the first place:
+
+```
+FAIL: checked 47 skill(s), found 1 issue(s)
+- GOALS.md headings differ from the template setup.sh writes; 1 heading(s) differ
+```
 
 ## 15. Routing eval matches bare substrings and scores only part of the answer (APPLIED)
 
@@ -507,7 +534,12 @@ unexpected = sorted(list(selected - should))
 ok = not missing and not unexpected
 ```
 
-Neither change required rewriting a case:
+Neither change edited a case file, but the closed-world rule was not free. It made
+`should_not_select` non-load-bearing in every case: `unexpected` already covers anything
+outside `should_select`, so `forbidden_selected` is computed and reported but can no longer
+fail a case. The field now earns its place only through the contradiction check in item 17,
+which had to be added precisely because this change removed the one thing that caught a
+skill listed in both lists.
 
 ```
                               current scorer   closed-world

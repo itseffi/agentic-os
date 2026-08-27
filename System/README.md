@@ -34,9 +34,15 @@ The MCP server provides AI agents with structured tools for task management:
 ### Running the Server
 
 ```bash
-cd System/mcp
-pip install pyyaml mcp
-python server.py
+pip install -r System/requirements.txt
+python System/mcp/server.py
+```
+
+The server operates on the repository the script lives in. Set `PERSONAL_OS_DIR` to point it
+at a different workspace:
+
+```bash
+PERSONAL_OS_DIR=/path/to/your/personal-os python System/mcp/server.py
 ```
 
 Most users don't need the MCP server - AGENTS.md works directly with files.
