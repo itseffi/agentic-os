@@ -1,6 +1,6 @@
 # Fix notes
 
-Status: items 3 and 8 are applied. The rest are documented only. Findings from an audit of
+Status: items 3, 8, 9 and 10 are applied. The rest are documented only. Findings from an audit of
 `System/mcp/server.py`, `scripts/`, and `setup.sh`. Each fix below was checked against the
 real code path before being written down.
 
@@ -287,44 +287,50 @@ change both preserved.
 
 ## 8. setup.sh overwrites GOALS.md (APPLIED)
 
-Fixed in `setup.sh:210-218`. `GOALS.md` was written with an unguarded `cat >`, while
-`BACKLOG.md` (`setup.sh:133`) and `.gitignore` (`setup.sh:125`) were both guarded. Re-running setup
+Fixed in `setup.sh:217-221`. `GOALS.md` was written with an unguarded `cat >`, while
+`BACKLOG.md` and `.gitignore` were both guarded. Re-running setup
 destroys the file the README calls "the heart of your Personal OS", replacing it with five
 fresh answers and nine empty placeholders.
 
-A plain existence guard does not work here, because the repository ships a `GOALS.md`
-already. It is an unfilled template: every goal is `[Goal Name]`, every result is
-`Result 1`. So `if [ -f "GOALS.md" ]` is true on a fresh clone, and guarding on that alone
-means setup never generates goals at all:
+Two approaches fail here.
+
+A plain existence guard does not work, because the repository ships a `GOALS.md` already.
+It is an unfilled template, so `if [ -f "GOALS.md" ]` is true on a fresh clone and setup
+would never generate goals at all.
+
+Sniffing the content to tell the shipped template from real work does not work either. A
+user who fills in goal 1 and leaves goal 2 as `[Goal Name]` still matches the placeholder,
+so the guard classifies their work as an untouched template and overwrites it with no
+backup, which is the original bug:
 
 ```
-fresh clone (shipped template present), plain existence guard:
-  info: File exists: GOALS.md (preserving your version)
-  -> setup never generates goals at all. Primary flow broken.
+user content present before run: 1
+still contains a [Goal Name] placeholder (goal 2): 1
+-> "GOALS.md is the unedited template; generating your version"
+AFTER: user content survived? 0
+AFTER: backups created?      0
 ```
 
-The guard has to distinguish the shipped template from a file the user has filled in. Back
-up anything else rather than refusing, so a deliberate re-run still works:
+Always keep a copy instead. No heuristic, no way to misclassify:
 
 ```bash
-if [ -f "GOALS.md" ] && grep -q '\[Goal Name\]' "GOALS.md"; then
-    print_info "GOALS.md is the unedited template; generating your version"
-elif [ -f "GOALS.md" ]; then
-    backup="GOALS.md.backup-$(date +%Y%m%d%H%M%S)"
-    cp "GOALS.md" "$backup"
-    print_warning "Existing GOALS.md backed up to $backup"
+if [ -f "GOALS.md" ]; then
+    goals_backup="GOALS.md.backup-$(date +%Y%m%d%H%M%S)"
+    cp "GOALS.md" "$goals_backup"
+    print_warning "Existing GOALS.md backed up to $goals_backup"
 fi
 ```
 
-Verified end to end by running the real `setup.sh` with piped answers in all three states.
-Each exits 0; the user-edited case keeps its content in the backup:
+The cost is one backup of the pristine template on a first run, and one per re-run
+afterwards. That is preferable to any chance of discarding real goals.
+
+Verified end to end against the partially-filled case that previously lost data:
 
 ```
-STATE 1 shipped template  -> "GOALS.md is the unedited template; generating your version"
-                             generated? 1 | role captured? 1 | backups: 0
-STATE 2 user-edited       -> "Existing GOALS.md backed up to GOALS.md.backup-20260827145445"
-                             backups: 1 | original text preserved in backup? 1
-STATE 3 no file           -> generated? 1 | backups: 0
+exit=0 (TERM unset)
+  Existing GOALS.md backed up to GOALS.md.backup-20260827145650
+  user content survived in backup? 1
+  GOALS.md regenerated?            1
 ```
 
 The questions at `setup.sh:157-203` still run in every case, which is correct once the
@@ -334,17 +340,18 @@ Open point: the backups are untracked files holding personal goals, in a reposit
 `.gitignore` is explicitly privacy-first. Adding `GOALS.md.backup-*` to `.gitignore` would
 match that intent, but it was left out as it goes beyond the fix.
 
-## 9. setup.sh reports .gitignore preserved when it does not exist
+## 9. setup.sh reports .gitignore preserved when it does not exist (APPLIED)
 
-`setup.sh:125` combines two independent conditions, so a missing template falls into the
-`else` branch and prints a message about a file that is not there:
+Fixed in `setup.sh:126-133`. The old condition combined two independent tests, so a
+missing template fell into the `else` branch and printed a message about a file that was
+not there:
 
 ```bash
 if [ ! -f ".gitignore" ] && [ -f "System/templates/gitignore" ]; then
 ```
 
-With no `.gitignore` and no template, it prints "File exists: .gitignore (preserving your
-version)". Fix by separating the cases:
+With no `.gitignore` and no template, it printed "File exists: .gitignore (preserving your
+version)". Fixed by separating the cases:
 
 ```bash
 if [ -f ".gitignore" ]; then
@@ -357,15 +364,18 @@ else
 fi
 ```
 
-Verified across all three states.
+Verified end to end across all three states: no template and no file warns accurately,
+template present copies it, existing file is preserved.
 
-## 10. setup.sh aborts when TERM is unset
+## 10. setup.sh aborts when TERM is unset (APPLIED)
 
-`clear` at `setup.sh:82` exits 1 when `TERM` is unset, and `set -e` is on at `setup.sh:6`,
-so the script dies before printing anything. Reproduces as
+Fixed in `setup.sh:83`. `clear` exits 1 when `TERM` is unset, and `set -e` is on at
+`setup.sh:6`, so the script died before printing anything, as
 `TERM environment variable not set. exit=1`.
 
-Fix:
+Every end-to-end run recorded above now completes with `exit=0` under `env -u TERM`.
+
+Fixed by:
 
 ```bash
 clear 2>/dev/null || true

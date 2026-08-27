@@ -79,7 +79,8 @@ ask_multiline() {
 }
 
 # Start setup
-clear
+# clear exits 1 when TERM is unset, which set -e would turn into an abort
+clear 2>/dev/null || true
 print_header "Welcome to Personal OS Setup"
 
 echo "This setup will help you:"
@@ -122,11 +123,13 @@ ensure_symlink ".agents/skills" "skills"
 # Copy template files
 print_header "Setting Up Templates"
 
-if [ ! -f ".gitignore" ] && [ -f "System/templates/gitignore" ]; then
+if [ -f ".gitignore" ]; then
+    print_info "File exists: .gitignore (preserving your version)"
+elif [ -f "System/templates/gitignore" ]; then
     cp "System/templates/gitignore" ".gitignore"
     print_success "Copied: .gitignore"
 else
-    print_info "File exists: .gitignore (preserving your version)"
+    print_warning "No .gitignore and no template at System/templates/gitignore"
 fi
 
 # Create BACKLOG.md
@@ -207,11 +210,11 @@ print_header "Generating Your GOALS.md"
 
 CURRENT_DATE=$(date +"%B %d, %Y")
 
-# The repo ships an unfilled GOALS.md template, so a plain existence check would
-# skip generation on every fresh clone. Recognise the template, back up anything else.
-if [ -f "GOALS.md" ] && grep -q '\[Goal Name\]' "GOALS.md"; then
-    print_info "GOALS.md is the unedited template; generating your version"
-elif [ -f "GOALS.md" ]; then
+# The repo ships an unfilled GOALS.md template, so a plain existence check would skip
+# generation on every fresh clone. Do not sniff the content to tell template from user
+# work either: a partially filled template still matches the placeholders. Always keep a
+# copy instead.
+if [ -f "GOALS.md" ]; then
     goals_backup="GOALS.md.backup-$(date +%Y%m%d%H%M%S)"
     cp "GOALS.md" "$goals_backup"
     print_warning "Existing GOALS.md backed up to $goals_backup"
