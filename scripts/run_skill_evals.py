@@ -282,6 +282,10 @@ def main() -> int:
     payload = {
         "timestamp_utc": timestamp,
         "provider": args.provider,
+        "judge": args.judge,
+        "judge_caveat": (
+            "token-set overlap; blind to stance and negation" if args.judge == "overlap" else None
+        ),
         "threshold": args.threshold,
         "min_pass_rate": args.min_pass_rate,
         "summary": {
@@ -304,6 +308,10 @@ def main() -> int:
     }
     out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
 
+    if args.judge == "overlap":
+        print("NOTE: --judge overlap compares token sets and cannot detect stance. A response "
+              "arguing against a skill in the skill's own vocabulary scores as well as one "
+              "following it. Use --judge openai for a verdict on the claim.")
     print(f"PASS RATE: {passed}/{total} = {pass_rate:.3f}")
     print(f"RESULTS: {out_path.relative_to(ROOT)}")
     for r in results:

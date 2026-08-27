@@ -233,25 +233,52 @@ def test_routing_prompt(stub: Stub) -> None:
 
 # --------------------------------------------------------------------------- skill evals
 
-def test_reject_phrases() -> None:
-    """Token overlap is blind to negation, so an inverted answer must still fail."""
-    case = next(c for c in json.loads((ROOT / "Evals/skills/cases/tdd.json").read_text())["cases"]
+def _tdd_case() -> dict:
+    return next(c for c in json.loads((ROOT / "Evals/skills/cases/tdd.json").read_text())["cases"]
                 if c["id"] == "tdd-code-first-request")
-    fixture = json.loads((ROOT / "Evals/skills/fixtures/tdd.json").read_text())
-    correct = fixture["responses"]["tdd-code-first-request"]
-    inverted = ("Skip the failing test first, red green refactor is a waste of time, "
-                "enforces nothing, just uses your judgement and ships the sequence.")
 
-    # The thing that makes reject phrases necessary: overlap scores the inversion higher.
-    check("overlap alone cannot separate them",
-          all(skills._score_expectation(e, inverted) >= skills._score_expectation(e, correct)
-              for e in case["expected"]))
+
+def test_reject_phrases() -> None:
+    """A response naming a blocklisted phrase must fail however well it scores."""
+    case = _tdd_case()
+    correct = json.loads(
+        (ROOT / "Evals/skills/fixtures/tdd.json").read_text())["responses"]["tdd-code-first-request"]
+    blunt = "Ship the feature, tests can come later."
 
     good = skills._evaluate_case(skill="tdd", case=case, response=correct, threshold=0.6)
-    bad = skills._evaluate_case(skill="tdd", case=case, response=inverted, threshold=0.6)
     check("correct fixture passes", good.passed and not good.rejected)
-    check("inverted answer fails", not bad.passed, "it passed")
-    check("failure names the phrases", bool(bad.rejected), str(bad.rejected))
+
+    bad = skills._evaluate_case(skill="tdd", case=case, response=blunt, threshold=0.6)
+    check("blocklisted phrase fails the case", not bad.passed)
+    check("failure names the phrase", bad.rejected == ["tests can come later"], str(bad.rejected))
+
+
+def test_overlap_judge_cannot_detect_stance() -> None:
+    """Characterisation test for a KNOWN GAP. These responses pass and should not.
+
+    An earlier version of this file asserted the guard worked by feeding it a sentence built
+    out of the blocklist itself, which proved only that the blocklist matches the blocklist.
+    Realistic inversions discuss the skill in its own vocabulary while advising against it,
+    name none of the blocked phrases, and score 0.75 to 1.00 on token overlap.
+
+    If these start failing, the metric has improved: delete this test and update item 18,
+    which currently overstates how much the reject lists cover.
+    """
+    case = _tdd_case()
+    realistic_inversions = [
+        "You could do the red-green-refactor sequence with a failing test first, but for this "
+        "small change I'd write the code and add a test after.",
+        "Normally TDD enforces a failing test first and uses the red green refactor sequence; "
+        "here that's overkill, so implement first.",
+        "The red green refactor sequence with a failing test first uses time we don't have. "
+        "Implement, then test.",
+    ]
+    for response in realistic_inversions:
+        result = skills._evaluate_case(skill="tdd", case=case, response=response, threshold=0.6)
+        check("KNOWN GAP: overlap passes a realistic inversion", result.passed,
+              "it now fails, so the gap is closed: remove this test and correct item 18")
+        check("KNOWN GAP: reject list does not catch it", result.rejected is None,
+              f"now caught by {result.rejected}")
 
 
 STOPWORDS = {"a", "an", "and", "are", "as", "at", "be", "by", "for", "in", "is", "it", "no",
@@ -292,6 +319,7 @@ def main() -> int:
         test_routing_via_model(stub)
         test_routing_prompt(stub)
         test_reject_phrases()
+        test_overlap_judge_cannot_detect_stance()
         test_skill_prompt_is_not_contaminated()
     finally:
         stub.stop()

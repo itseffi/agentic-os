@@ -701,10 +701,32 @@ Judge failures are recorded per case like any other model error rather than abor
 
 ### What this does not fix
 
-`reject` is a blocklist, so it catches the inversions someone thought to write down and
-nothing else. The default remains `--judge overlap`, which stays gameable by any response
-that reuses the right words in the wrong order. Only the judge actually evaluates the claim
-the expectation makes, and it is verified against a stub, not a real model.
+Correcting an overstatement in an earlier version of this section. It said the reject list
+catches "the inversions someone thought to write down", which implied it covers the realistic
+ones. It does not. The demonstration used to justify it was circular: the inverted sentence
+was built out of the blocklist, so it proved only that the blocklist matches itself.
+
+A realistic inversion discusses the skill in the skill's own vocabulary while advising
+against it. It names none of the blocked phrases and still scores 0.75 to 1.00:
+
+```
+scores=[0.75, 0.8] rejected=None PASSED=True
+  "You could do the red-green-refactor sequence with a failing test first, but for this
+   small change I'd write the code and add a test after."
+scores=[1.0, 1.0]  rejected=None PASSED=True
+  "Normally TDD enforces a failing test first and uses the red green refactor sequence;
+   here that's overkill, so implement first."
+```
+
+So `reject` catches only blunt inversions that happen to name a listed phrase. Blunt ones
+mostly fail on overlap anyway, since they lack the vocabulary. The dangerous case, right
+words and wrong stance, passes.
+
+`test_overlap_judge_cannot_detect_stance` in `scripts/test_eval_runners.py` pins this as a
+known gap, so it is visible rather than implied, and tells whoever closes it to update this
+section. `--judge overlap` now prints the caveat on every run and records it in the results
+file. Only `--judge openai` evaluates the claim, and it is verified against a stub, not a
+real model.
 
 ## 19. The repository had no tests at all (APPLIED)
 
