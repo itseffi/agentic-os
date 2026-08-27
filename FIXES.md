@@ -1,6 +1,6 @@
 # Fix notes
 
-Status: items 3, 8, 9, 10, 11, 15, 16, 17 and 18 are applied. The rest are documented only. Findings from an audit of
+Status: items 3, 8, 9, 10, 11, 15, 16, 17, 18 and 19 are applied. The rest are documented only. Findings from an audit of
 `System/mcp/server.py`, `scripts/`, and `setup.sh`. Each fix below was checked against the
 real code path before being written down.
 
@@ -705,6 +705,47 @@ Judge failures are recorded per case like any other model error rather than abor
 nothing else. The default remains `--judge overlap`, which stays gameable by any response
 that reuses the right words in the wrong order. Only the judge actually evaluates the claim
 the expectation makes, and it is verified against a stub, not a real model.
+
+## 19. The repository had no tests at all (APPLIED)
+
+Added `scripts/test_eval_runners.py`, 45 checks, run with `python3 scripts/test_eval_runners.py`.
+
+Every fix in this note was verified once, in a throwaway script, and then discarded. Nothing
+in the repository could re-run any of it, and there were no tests anywhere: no `tests/`
+directory, no `test_*.py`, no pytest. The eval runners were the only executable checks, and
+nothing checked them.
+
+That is why several fixes here broke each other, each caught by review rather than by a
+suite:
+
+- closed-world scoring (item 15) silently disabled the contradiction check (item 17)
+- `\b` anchors (item 15) stopped keywords like `c++` matching at all
+- the routing prose fallback (item 16) selected the skill a model had just ruled out
+
+The suite covers exactly those regressions, plus the model client's failure modes, the
+routing prompt contents, case validation, and the reject phrases. It uses a stub HTTP server
+on an ephemeral port, no network, and no test framework, matching the other scripts here.
+
+Confirmed it fails when the bugs come back. Reverting `_boundary_pattern` to a bare substring
+and removing the `reject` lists:
+
+```
+FAIL: 6 of 45 check(s) failed
+- no false positive: 'Write an explanation of the auth flow' (selected ['writing-plans'])
+- no false positive: 'We abandoned that approach' (selected ['verification'])
+- true positive survives
+- inverted answer fails (it passed)
+- failure names the phrases (None)
+```
+
+and passing again once restored.
+
+One check was wrong on the first run and was corrected rather than the code: it asserted the
+skill prompt shared no scored vocabulary at all, but the overlap came from the skill's own
+`SKILL.md` description, which a real agent also sees. The check now excludes the description
+and tests the scaffolding around it, which is where the old `verification-oriented guidance`
+contamination lived. The description still overlaps the expectations heavily, which is a
+standing argument for `--judge openai` over token overlap.
 
 ## Verifying the fixes
 
