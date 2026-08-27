@@ -1,6 +1,6 @@
 # Fix notes
 
-Status: items 3, 8, 9, 10, 11, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24 and 25 are applied. The rest are documented only. Findings from an audit of
+Status: items 3, 8, 9, 10, 11, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25 and 26 are applied. The rest are documented only. Findings from an audit of
 `System/mcp/server.py`, `scripts/`, and `setup.sh`. Each fix below was checked against the
 real code path before being written down.
 
@@ -1025,6 +1025,40 @@ Routine success output keeps the relative form, which is friendlier and unambigu
 context. `test_error_messages_name_an_absolute_path` builds a sandboxed copy of each runner
 with a deliberately bad case file and asserts the error names the sandbox and not this
 repository.
+
+## 26. The skill case validator lagged the other two (APPLIED)
+
+Comparing the three validators side by side, `validate_skill_eval_cases.py` was missing
+checks the routing and memory validators already had, and two of the gaps had teeth.
+
+**No duplicate-id check.** Both other validators reject a repeated case id; this one accepted
+two cases sharing `id: "dup"`.
+
+**No check that `skill` matches the filename.** The runner picks fixtures by the `skill`
+field, not the filename, and applies `--skill` against it. So a file named `tdd.json`
+declaring `"skill": "verification"` scored its cases against verification's fixture responses
+and reported a clean pass:
+
+```
+PASS RATE: 1/1 = 1.000
+- [PASS] verification/borrowed
+```
+
+A file named tdd.json, tested entirely against another skill's fixtures, silently.
+
+**No check that a fixture response exists per case.** A case without one aborted the run
+mid-suite with an uncaught `FileNotFoundError` or `KeyError` rather than a validation error.
+
+All three are now checked, along with `skill` naming a real pack in `.agents/skills`.
+
+The fixture check was wrong on its first attempt and the new test caught it: it read
+`if fixture_ids and case_id not in fixture_ids`, so an empty fixture file produced an empty
+set, the guard was falsy, and validation was skipped for precisely the file that most needed
+it. Loading is now tracked with its own flag.
+
+`test_skill_case_validator_parity` builds a sandbox per scenario and covers duplicate ids,
+filename mismatch, unknown skill pack, missing fixture response, and that a well-formed file
+still passes.
 
 ## Verifying the fixes
 

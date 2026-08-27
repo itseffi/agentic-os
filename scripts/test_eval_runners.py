@@ -585,6 +585,59 @@ def test_error_messages_name_an_absolute_path() -> None:
               str(ROOT / rel) not in proc.stdout, proc.stdout[:200])
 
 
+def test_skill_case_validator_parity() -> None:
+    """The skill validator must catch what the other two already did.
+
+    It had no duplicate-id check, though both the routing and memory validators do, and it
+    never checked that the `skill` field matched the filename. The runner picks fixtures by
+    that field, so tdd.json declaring skill "verification" scored entirely against
+    verification's fixture responses and reported a clean pass.
+    """
+    import subprocess
+    import shutil
+    import tempfile
+
+    def validate(case_file: dict, filename: str = "tdd.json",
+                 fixture: dict | None = None) -> tuple[int, str]:
+        sandbox = Path(tempfile.mkdtemp())
+        for sub in ("scripts", "Evals/skills/cases", "Evals/skills/fixtures", ".agents/skills"):
+            (sandbox / sub).mkdir(parents=True, exist_ok=True)
+        shutil.copy(SCRIPTS / "validate_skill_eval_cases.py", sandbox / "scripts")
+        shutil.copy(ROOT / "Evals/scenarios.json", sandbox / "Evals")
+        for skill in ("tdd", "verification"):
+            shutil.copytree(ROOT / ".agents/skills" / skill, sandbox / ".agents/skills" / skill)
+        (sandbox / "Evals/skills/cases" / filename).write_text(json.dumps(case_file))
+        name = case_file.get("skill", "tdd")
+        (sandbox / "Evals/skills/fixtures" / f"{name}.json").write_text(
+            json.dumps(fixture if fixture is not None
+                       else {"responses": {c["id"]: "text" for c in case_file.get("cases", [])}}))
+        proc = subprocess.run([sys.executable, str(sandbox / "scripts/validate_skill_eval_cases.py")],
+                              capture_output=True, text=True)
+        return proc.returncode, proc.stdout + proc.stderr
+
+    code, out = validate({"skill": "tdd", "version": 1, "cases": [
+        {"id": "dup", "input": "a", "expected": ["x"]},
+        {"id": "dup", "input": "b", "expected": ["y"]}]})
+    check("duplicate case id rejected", code == 1 and "duplicate id" in out, out[:200])
+
+    code, out = validate({"skill": "verification", "version": 1, "cases": [
+        {"id": "c", "input": "a", "expected": ["x"]}]}, filename="tdd.json")
+    check("skill/filename mismatch rejected", code == 1 and "but the file is named" in out, out[:200])
+
+    code, out = validate({"skill": "not-a-skill", "version": 1, "cases": [
+        {"id": "c", "input": "a", "expected": ["x"]}]}, filename="not-a-skill.json")
+    check("unknown skill pack rejected", code == 1 and "not a pack" in out, out[:200])
+
+    code, out = validate({"skill": "tdd", "version": 1, "cases": [
+        {"id": "orphan", "input": "a", "expected": ["x"]}]}, fixture={"responses": {}})
+    check("case with no fixture response rejected",
+          code == 1 and "no response in" in out, out[:200])
+
+    code, out = validate({"skill": "tdd", "version": 1, "cases": [
+        {"id": "ok", "input": "a", "expected": ["x"]}]})
+    check("a well-formed file still passes", code == 0, out[:200])
+
+
 def main() -> int:
     stub = Stub()
     try:
@@ -605,6 +658,7 @@ def main() -> int:
         test_no_vacuous_passes()
         test_results_paths_do_not_collide()
         test_error_messages_name_an_absolute_path()
+        test_skill_case_validator_parity()
         test_skill_prompt_is_not_contaminated()
     finally:
         stub.stop()
