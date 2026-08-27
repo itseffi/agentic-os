@@ -12,10 +12,13 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib import request
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from model_client import ModelError, query_chat  # noqa: E402  (needs sys.path above)
 
 ROOT = Path(__file__).resolve().parents[1]
+SKILLS_DIR = ROOT / ".agents" / "skills"
 CASES_DIR = ROOT / "Evals" / "skills" / "cases"
 FIXTURES_DIR = ROOT / "Evals" / "skills" / "fixtures"
 RESULTS_DIR = ROOT / "Evals" / "skills" / "results"
@@ -28,6 +31,7 @@ class CaseResult:
     passed: bool
     response: str
     checks: list[dict[str, Any]]
+    error: str | None = None
 
 
 def _tokens(text: str) -> set[str]:
@@ -63,41 +67,33 @@ def _load_fixture_response(skill: str, case_id: str) -> str:
     return str(responses[case_id])
 
 
-def _query_openai_compatible(
-    *,
-    base_url: str,
-    model: str,
-    api_key: str,
-    user_input: str,
-) -> str:
-    payload = {
-        "model": model,
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You are an execution-focused coding assistant. "
-                    "Respond directly and include concrete verification-oriented guidance."
-                ),
-            },
-            {"role": "user", "content": user_input},
-        ],
-        "temperature": 0.0,
-    }
-    body = json.dumps(payload).encode("utf-8")
-    url = base_url.rstrip("/") + "/chat/completions"
-    req = request.Request(
-        url,
-        data=body,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
-        method="POST",
+def _skill_brief(skill: str) -> str:
+    """Return the skill's name and frontmatter description from its SKILL.md.
+
+    The previous prompt never told the model which skill was under test, so --provider openai
+    measured the base model's default behaviour rather than the skill.
+    """
+    path = SKILLS_DIR / skill / "SKILL.md"
+    if not path.exists():
+        raise FileNotFoundError(f"missing skill pack: {path}")
+    text = path.read_text(encoding="utf-8")
+    match = re.search(r"^description:\s*(.+)$", text, re.MULTILINE)
+    description = match.group(1).strip() if match else ""
+    return f"{skill}: {description}" if description else skill
+
+
+def _system_prompt(skill: str) -> str:
+    """Build the system prompt for one skill.
+
+    Deliberately free of the vocabulary the expectations are scored on. The old fixed prompt
+    said "include concrete verification-oriented guidance", which handed the verification
+    cases a scored token before the model had said anything.
+    """
+    return (
+        "You are a coding assistant working in a repository that defines reusable skills.\n"
+        f"Apply this skill to the user's message:\n  {_skill_brief(skill)}\n"
+        "Respond directly and concretely, as you would to a colleague."
     )
-    with request.urlopen(req, timeout=120) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
-    return data["choices"][0]["message"]["content"]
 
 
 def _evaluate_case(
@@ -175,12 +171,28 @@ def main() -> int:
             if args.provider == "fixture":
                 response = _load_fixture_response(skill, case["id"])
             else:
-                response = _query_openai_compatible(
-                    base_url=args.base_url,
-                    model=args.model,
-                    api_key=args.api_key,
-                    user_input=case["input"],
-                )
+                try:
+                    response = query_chat(
+                        base_url=args.base_url,
+                        model=args.model,
+                        api_key=args.api_key,
+                        system_prompt=_system_prompt(skill),
+                        user_input=case["input"],
+                    )
+                except ModelError as exc:
+                    # Record and continue: a single transport blip used to abort the run
+                    # before anything was written, discarding every result so far.
+                    results.append(
+                        CaseResult(
+                            skill=skill,
+                            case_id=case["id"],
+                            passed=False,
+                            response="",
+                            checks=[],
+                            error=str(exc),
+                        )
+                    )
+                    continue
             results.append(
                 _evaluate_case(
                     skill=skill,
@@ -214,6 +226,7 @@ def main() -> int:
                 "passed": r.passed,
                 "checks": r.checks,
                 "response": r.response,
+                "error": r.error,
             }
             for r in results
         ],
@@ -224,7 +237,8 @@ def main() -> int:
     print(f"RESULTS: {out_path.relative_to(ROOT)}")
     for r in results:
         status = "PASS" if r.passed else "FAIL"
-        print(f"- [{status}] {r.skill}/{r.case_id}")
+        suffix = f"  ({r.error})" if r.error else ""
+        print(f"- [{status}] {r.skill}/{r.case_id}{suffix}")
 
     if pass_rate < args.min_pass_rate:
         return 1

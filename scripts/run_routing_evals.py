@@ -5,12 +5,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from model_client import ModelError, query_chat  # noqa: E402  (needs sys.path above)
 
 ROOT = Path(__file__).resolve().parents[1]
+SKILLS_DIR = ROOT / ".agents" / "skills"
+AGENTS_MD = ROOT / "AGENTS.md"
 CASES_PATH = ROOT / "Evals" / "skills" / "routing_cases.json"
 RESULTS_DIR = ROOT / "Evals" / "skills" / "results"
 
@@ -43,6 +50,68 @@ def route_skills(text: str) -> set[str]:
         if any(re.search(_boundary_pattern(p), low) for p in patterns):
             selected.add(skill)
     return selected
+
+
+def _routing_policy() -> str:
+    """Return the Skill Routing Policy section of AGENTS.md, which is what a real agent sees."""
+    if not AGENTS_MD.exists():
+        return ""
+    text = AGENTS_MD.read_text(encoding="utf-8")
+    match = re.search(r"^## Skill Routing Policy.*?(?=^## )", text, re.MULTILINE | re.DOTALL)
+    return match.group(0).strip() if match else ""
+
+
+def _skill_catalogue() -> str:
+    """Name and describe each routable skill from its own SKILL.md frontmatter."""
+    lines = []
+    for skill in sorted(KEYWORD_RULES):
+        path = SKILLS_DIR / skill / "SKILL.md"
+        description = ""
+        if path.exists():
+            match = re.search(r"^description:\s*(.+)$", path.read_text(encoding="utf-8"), re.MULTILINE)
+            description = match.group(1).strip() if match else ""
+        lines.append(f"- {skill}" + (f": {description}" if description else ""))
+    return "\n".join(lines)
+
+
+def _model_system_prompt() -> str:
+    policy = _routing_policy()
+    return (
+        "You route work to skills in a repository. Choose every skill that applies to the "
+        "user's message, and no others.\n\n"
+        f"Available skills:\n{_skill_catalogue()}\n\n"
+        + (f"Routing policy from AGENTS.md:\n{policy}\n\n" if policy else "")
+        + 'Reply with only a JSON array of skill names, for example ["tdd"]. '
+        "Use an empty array if none apply."
+    )
+
+
+def route_skills_via_model(text: str, *, base_url: str, model: str, api_key: str) -> set[str]:
+    """Ask a model to route, then map its answer onto the known skill names.
+
+    Parses a JSON array when the model returns one, and otherwise falls back to scanning for
+    known skill names, since models routinely wrap JSON in prose.
+    """
+    reply = query_chat(
+        base_url=base_url,
+        model=model,
+        api_key=api_key,
+        system_prompt=_model_system_prompt(),
+        user_input=text,
+    )
+    known = set(KEYWORD_RULES)
+
+    match = re.search(r"\[.*?\]", reply, re.DOTALL)
+    if match:
+        try:
+            parsed = json.loads(match.group(0))
+            if isinstance(parsed, list):
+                return {str(x).strip() for x in parsed} & known
+        except json.JSONDecodeError:
+            pass
+
+    low = reply.lower()
+    return {s for s in known if re.search(_boundary_pattern(s), low)}
 
 
 def validate_cases(cases: list[dict]) -> list[str]:
@@ -88,7 +157,26 @@ def validate_cases(cases: list[dict]) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run routing evals.")
     parser.add_argument("--min-pass-rate", type=float, default=1.0)
+    parser.add_argument(
+        "--provider",
+        choices=["keyword", "openai"],
+        default="keyword",
+        help="Who routes: the built-in keyword table, or a model given the routing policy.",
+    )
+    parser.add_argument(
+        "--base-url",
+        default=os.environ.get("OPENAI_BASE_URL", "http://localhost:8080/v1"),
+        help="OpenAI-compatible base URL for --provider openai.",
+    )
+    parser.add_argument("--model", default=os.environ.get("OPENAI_MODEL", ""),
+                        help="Model id for --provider openai.")
+    parser.add_argument("--api-key", default=os.environ.get("OPENAI_API_KEY", "none"),
+                        help="API key for --provider openai.")
     args = parser.parse_args()
+
+    if args.provider == "openai" and not args.model:
+        print("ERROR: --model is required when --provider openai")
+        return 2
 
     data = json.loads(CASES_PATH.read_text(encoding="utf-8"))
     cases = data.get("cases", [])
@@ -106,7 +194,20 @@ def main() -> int:
     results = []
     passed = 0
     for case in cases:
-        selected = route_skills(case["input"])
+        error: str | None = None
+        if args.provider == "keyword":
+            selected = route_skills(case["input"])
+        else:
+            try:
+                selected = route_skills_via_model(
+                    case["input"],
+                    base_url=args.base_url,
+                    model=args.model,
+                    api_key=args.api_key,
+                )
+            except ModelError as exc:
+                # Record and continue rather than aborting the whole run.
+                selected, error = set(), str(exc)
         should = set(case.get("should_select", []))
         should_not = set(case.get("should_not_select", []))
         missing = sorted(list(should - selected))
@@ -114,7 +215,7 @@ def main() -> int:
         # Closed world: should_select is the complete expected answer. Without this a
         # router firing every non-forbidden skill scores the same as the correct one.
         unexpected = sorted(list(selected - should))
-        ok = not missing and not unexpected
+        ok = not missing and not unexpected and error is None
         if ok:
             passed += 1
         results.append(
@@ -127,6 +228,7 @@ def main() -> int:
                 "missing_required": missing,
                 "forbidden_selected": false_pos,
                 "unexpected_selected": unexpected,
+                "error": error,
                 "passed": ok,
             }
         )
@@ -139,6 +241,7 @@ def main() -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "timestamp_utc": ts,
+        "provider": args.provider,
         "summary": {
             "total_cases": total,
             "passed_cases": passed,
@@ -153,7 +256,8 @@ def main() -> int:
     print(f"RESULTS: {out.relative_to(ROOT)}")
     for r in results:
         state = "PASS" if r["passed"] else "FAIL"
-        print(f"- [{state}] {r['id']} -> selected={','.join(r['selected']) or '(none)'}")
+        detail = f"  ({r['error']})" if r.get("error") else ""
+        print(f"- [{state}] {r['id']} -> selected={','.join(r['selected']) or '(none)'}{detail}")
 
     return 0 if pass_rate >= args.min_pass_rate else 1
 

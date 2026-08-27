@@ -1,12 +1,11 @@
 # Fix notes
 
-Status: items 3, 8, 9, 10, 11, 15 and 17 are applied. The rest are documented only. Findings from an audit of
+Status: items 3, 8, 9, 10, 11, 15, 16 and 17 are applied. The rest are documented only. Findings from an audit of
 `System/mcp/server.py`, `scripts/`, and `setup.sh`. Each fix below was checked against the
 real code path before being written down.
 
-Open question: items 12, 13, 14 and 16 are design calls, not mechanical fixes. They need a
-decision before anyone patches them. Item 16 is the most consequential: it explains why a
-passing eval suite is weak evidence about this repo.
+Open question: items 12, 13 and 14 are design calls, not mechanical fixes. They need a
+decision before anyone patches them.
 
 ## 1. create_task overwrites existing tasks
 
@@ -522,42 +521,83 @@ imprecise router drops to 0/5, and three of the four false positives become `(no
 `The migration is incomplete` still selects `writing-plans`, correctly, because *migration*
 is a genuine keyword for that skill.
 
-## 16. Two of the three eval runners can only test themselves
+## 16. The eval runners could only test themselves (APPLIED)
 
-This is the reason item 15 matters less than it looks, and it needs a decision.
+All three runners scored something the repository had written for itself. Correcting an
+earlier version of this note: it said two of three, on the assumption that
+`run_skill_evals.py` had a sound live path. Running that path proved otherwise, so it was
+three of three.
 
-`run_routing_evals.py` defines the router it evaluates. `KEYWORD_RULES` and `route_skills`
-sit at the top of the same file, and `scripts/run_routing_evals.py:52` scores that stub:
+`run_routing_evals.py` defined the router it evaluated. `run_memory_impact_evals.py:44-45`
+still reads both sides of its A/B comparison out of the cases file. And
+`run_skill_evals.py`'s `--provider openai` never sent the skill under test, so it measured
+the base model's default behaviour, while its fixed system prompt said "include concrete
+verification-oriented guidance" and thereby handed the verification cases a scored token
+before the model spoke.
 
-```python
-selected = route_skills(case["input"])
+### What changed
+
+A shared `scripts/model_client.py` now holds one hardened `query_chat`, and both runners
+take `--provider`.
+
+`run_routing_evals.py` gains `--provider {keyword,openai}`, defaulting to `keyword` so
+offline runs are unchanged. The `openai` path sends the skill catalogue built from each
+`SKILL.md` frontmatter and the Skill Routing Policy section lifted from `AGENTS.md`, then
+parses a JSON array of skill names, falling back to scanning for known names when a model
+wraps its answer in prose. Verified against a stub:
+
+```
+names every skill        : True
+includes SKILL.md desc   : True
+includes AGENTS.md policy: True
 ```
 
-The file's docstring says "did the agent pick the right skill?", but no agent is consulted.
-Its entire import list is `argparse`, `json`, `re`, `datetime`, `pathlib`. Nothing reads
-`.agents/skills/`, nothing reads the routing policy in `AGENTS.md`, nothing reaches a model,
-and there is no `--provider` flag, so there is no way to point it at a real agent. The
-keyword table and the cases were written together, and the table is tuned until the cases
-pass. 5/5 is guaranteed by construction.
+`run_skill_evals.py:174-181` now sends the skill under test, built from its own `SKILL.md`
+description, under a system prompt free of the scored vocabulary:
 
-`run_memory_impact_evals.py:44-45` has the same shape. Both sides of the A/B comparison are
-read out of the cases file:
-
-```python
-baseline = case["baseline_response"]
-with_memory = case["memory_search_response"]
+```
+skill named in prompt : True
+leaks 'verification'  : False
 ```
 
-`run_skill_evals.py` is the only one with a real path, `_query_openai_compatible` at
-`scripts/run_skill_evals.py:178`, and it defaults to `fixture`.
+### Proof it now discriminates
 
-Consequence worth stating plainly: "the eval suite passes" is not evidence that skill
-routing or memory search works. It should not be cited as such.
+A stub that answers `["tdd"]` regardless of input scores 1/5 rather than 5/5, because only
+the tdd case is actually satisfied:
 
-Making these measure anything real means the routing decision has to come from whatever
-actually routes: a model given the routing policy and the skill list, behind a `--provider`
-flag mirroring `run_skill_evals.py`, with fixtures kept for offline runs. That is a change
-of purpose for both files, not a patch.
+```
+model returns ["tdd"]  rc=1  PASS RATE: 1/5 = 0.200
+model returns prose    rc=1  PASS RATE: 1/5 = 0.200
+```
+
+### Error handling
+
+`query_chat` raises `ModelError` with a readable message instead of the three failures the
+old inline client had, and each runner records the error against the case and continues:
+
+```
+server 500        - [FAIL] ... (HTTP 500 from http://...: upstream exploded)
+null content      - [FAIL] ... (response carried a null content (refusal or tool call))
+API error object  - [FAIL] ... (API error: invalid api key)
+```
+
+Previously these raised `HTTPError`, returned `None` that crashed scoring with
+`AttributeError`, and raised a bare `KeyError: 'choices'` that discarded the API's own
+message. Because nothing was written until after the loop, one failure destroyed every
+result already computed. Now the run completes and the file is written:
+
+```
+results file written despite every request failing: True
+  cases recorded : 5 of 5
+  first error    : HTTP 500 from http://127.0.0.1:8479/v1: upstream exploded
+```
+
+### Still outstanding
+
+`run_memory_impact_evals.py` remains self-referential; making it real means generating both
+sides rather than reading them from the cases file. And the live paths are verified only
+against a stub. Whether a real model's output clears the token-overlap threshold is untested,
+and that threshold is a crude proxy for the behaviour these cases describe.
 
 ## 17. Nothing validated routing_cases.json (APPLIED)
 
