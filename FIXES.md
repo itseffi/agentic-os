@@ -9,11 +9,9 @@ choice is recorded in its section.
 
 ## 1. create_task overwrites existing tasks (APPLIED)
 
-`create_task` writes to a slug derived from the title with no existence check. Calling it
-with a title that already has a task file replaces that file with a blank template and
-reports success.
-
-`System/mcp/server.py:570` builds the path, `System/mcp/server.py:589` writes it:
+Fixed in `System/mcp/server.py:596-611`. `create_task` wrote to a slug derived from the
+title with no existence check, so calling it with a title that already had a task file
+replaced that file with a blank template and reported success. The old code:
 
 ```python
 filename = to_slug_filename(title)
@@ -23,7 +21,7 @@ with open(filepath, 'w') as f:
     f.write(file_content)
 ```
 
-Nothing between those lines checks whether `filepath` exists.
+Nothing between building the path and writing it checked whether `filepath` existed.
 
 ### What it costs
 
@@ -57,7 +55,7 @@ Two reasons the overwrite is not defensible as replace-by-title:
 
 ### The fix
 
-Check for the file explicitly, after `filepath` is built at `System/mcp/server.py:571`:
+Check for the file explicitly, right after `filepath` is built:
 
 ```python
 if filepath.exists():
@@ -75,9 +73,9 @@ so it has to be a distinguishable result, not an exception string.
 
 ### Why mode 'x' is not sufficient on its own
 
-Changing `System/mcp/server.py:589` to `open(filepath, 'x')` does stop the overwrite.
-`FileExistsError` reaches the `except Exception` at `System/mcp/server.py:597` and comes
-back as `success: False` with the file intact.
+Changing the write to `open(filepath, 'x')` would also stop the overwrite. `FileExistsError`
+reaches the handler's `except Exception` and comes back as `success: False` with the file
+intact.
 
 But that handler flattens every failure into the same shape, so an expected outcome and a
 real I/O fault become indistinguishable:
@@ -101,7 +99,8 @@ same thing only reintroduces the error channel the check exists to avoid.
 
 ## 2. get_system_status crashes on incomplete frontmatter (APPLIED)
 
-`System/mcp/server.py:682-684` subscripts directly where every sibling handler uses `.get()`:
+Fixed in `System/mcp/server.py:726-731`. `get_system_status` subscripted directly where
+every sibling handler used `.get()`:
 
 ```python
 priority_counts = Counter(task['priority'] for task in active_tasks)
@@ -109,10 +108,10 @@ status_counts = Counter(task['status'] for task in active_tasks)
 category_counts = Counter(task['category'] for task in active_tasks)
 ```
 
-One task file missing `priority:` takes the whole tool down with `KeyError: 'priority'`.
-`get_task_summary` survives the same file because it uses `.get()`.
+One task file missing `priority:` took the whole tool down with `KeyError: 'priority'`.
+`get_task_summary` survived the same file because it used `.get()`.
 
-Fix, matching the defaults already used at `System/mcp/server.py:633-635`:
+Fixed with the defaults that handler already used:
 
 ```python
 priority_counts = Counter(task.get('priority', 'P2') for task in active_tasks)
@@ -163,9 +162,9 @@ A sub-item appearing before any parent is treated as a top-level item rather tha
 
 ## 4. process_backlog_with_dedup misses duplicates within one batch (APPLIED)
 
-`existing_tasks` is snapshotted at `System/mcp/server.py:823` and never updated inside the
-loop, so two similar items in the same call are both written without either being flagged.
-That is the exact failure the tool exists to prevent:
+Fixed in `System/mcp/server.py:871` and `:946`. `existing_tasks` was snapshotted before the
+loop and never updated inside it, so two similar items in one call were both written without
+either being flagged. That is the exact failure the tool exists to prevent:
 
 ```
 auto_created: ['draft-the-q3-partner-outreach-email.md',
@@ -173,21 +172,21 @@ auto_created: ['draft-the-q3-partner-outreach-email.md',
 dupes flagged: 0
 ```
 
-Fix: append each created task to `existing_tasks` right after writing it, so the next
-iteration's `find_similar_tasks` can see it.
+Fixed by appending each created task to `existing_tasks` right after writing it, so the
+next iteration's `find_similar_tasks` can see it.
 
 ```python
 existing_tasks.append({**metadata, 'filename': safe_filename, 'body_content': ''})
 ```
 
-The write at `System/mcp/server.py:881` is also unguarded and needs the same existence
-check as item 1. Here it should skip and report rather than error, since this call
-processes a batch: add the skipped filename to a `skipped` list in the result.
+The write in that branch was unguarded too, and now carries the same existence check as
+item 1. It skips and reports rather than erroring, since this call processes a batch: the
+filename goes into a `skipped_existing` list in the result.
 
 ## 5. create_task accepts invalid priority, estimated_time, and empty titles (APPLIED)
 
-`category` is coerced to `"other"` when invalid (`System/mcp/server.py:566`). Nothing
-equivalent exists for the other inputs.
+Fixed in `System/mcp/server.py:573-594`. `category` was coerced to `"other"` when invalid;
+nothing equivalent existed for the other inputs.
 
 `priority` is written verbatim, so `URGENT` lands in the frontmatter. `check_priority_limits`
 then reports `{'URGENT': 1}` while its thresholds only cover P0/P1/P2, so the task escapes
@@ -203,7 +202,7 @@ get_task_summary CRASH: TypeError unsupported operand type(s) for +: 'int' and '
 A whitespace-only or punctuation-only title slugs to `untitled-task.md`, so every such task
 silently replaces the last one once item 1 is not yet fixed.
 
-Fix, alongside the existing category check:
+Fixed alongside the existing category check:
 
 ```python
 VALID_PRIORITIES = {"P0", "P1", "P2", "P3"}   # near VALID_CATEGORIES at line 52
@@ -233,34 +232,33 @@ Verified behaviour:
 
 ## 6. Handlers crash when arguments is null (APPLIED)
 
-`System/mcp/server.py:560` reads `arguments['title']` outside the `try`, which starts at
-line 588. A call with null arguments raises straight out of `handle_call_tool` instead of
+Fixed in `System/mcp/server.py:533-541`. `create_task` read `arguments['title']` outside
+its `try`, so a call with null arguments raised straight out of `handle_call_tool` instead of
 returning the handler's own `success: False`:
 
 ```
 arguments=None -> TypeError: 'NoneType' object is not subscriptable
 ```
 
-Same shape at `System/mcp/server.py:606` (`update_task_status`) and
-`System/mcp/server.py:977` (`annotate_eval`). Input schemas mark these required, but an MCP
-client is not obliged to enforce them.
+`update_task_status` and `annotate_eval` had the same shape. Input schemas mark these
+required, but an MCP client is not obliged to enforce them.
 
-Fix once at the top of `handle_call_tool`:
+Fixed once at the top of `handle_call_tool`, using `is None` rather than truthiness:
 
 ```python
 arguments = arguments or {}
 ```
 
 This is behaviour-preserving for the handlers that already test `if arguments:`, since an
-empty dict is falsy and takes the same branch as `None` did. It converts the crash into a
-`KeyError`, so pair it with the explicit required-field checks from item 5 in each of the
-three handlers.
+empty dict is falsy and takes the same branch as `None` did. On its own it would convert the
+crash into a `KeyError`, so each of the three handlers also got the explicit required-field
+check from item 5.
 
 ## 7. update_file_frontmatter grows a blank line on every update (APPLIED)
 
-`parse_yaml_frontmatter` keeps the newlines that followed the closing `---` inside `body`
-(`System/mcp/server.py:63`), and `update_file_frontmatter` then adds its own separator on
-top of them (`System/mcp/server.py:369`):
+Fixed in `System/mcp/server.py:382`. `parse_yaml_frontmatter` keeps the newlines that
+followed the closing `---` inside `body`, and `update_file_frontmatter` then added its own
+separator on top of them:
 
 ```python
 new_content = f"---\n{yaml_str}---\n{body}"
@@ -276,7 +274,7 @@ new: '\n# T' '\n# T' '\n# T'
 This is not caused by `create_task`'s `---\n\n` separator. It grows the same way whichever
 separator the file was created with.
 
-Fix by normalising in the writer:
+Fixed by normalising in the writer:
 
 ```python
 new_content = f"---\n{yaml_str}---\n\n{body.lstrip(chr(10))}"
@@ -385,8 +383,9 @@ clear 2>/dev/null || true
 
 Fixed in `scripts/run_routing_evals.py:75` and `scripts/run_memory_impact_evals.py:81`.
 Both called `write_text` on a path whose parent might not exist, and worked only because
-the results directories happen to be committed. `scripts/run_skill_evals.py:199` already
-did this correctly.
+the results directories happen to be committed. `scripts/run_skill_evals.py` already
+did this correctly, and all three now share `unique_results_path` from `scripts/eval_io.py`
+(item 24).
 
 ```python
 out.parent.mkdir(parents=True, exist_ok=True)
@@ -574,7 +573,7 @@ earlier version of this note: it said two of three, on the assumption that
 `run_skill_evals.py` had a sound live path. Running that path proved otherwise, so it was
 three of three.
 
-`run_routing_evals.py` defined the router it evaluated. `run_memory_impact_evals.py:44-45`
+`run_routing_evals.py` defined the router it evaluated. `scripts/run_memory_impact_evals.py:105-106`
 still reads both sides of its A/B comparison out of the cases file. And
 `run_skill_evals.py`'s `--provider openai` never sent the skill under test, so it measured
 the base model's default behaviour, while its fixed system prompt said "include concrete
@@ -614,7 +613,7 @@ bare prose         -> ModelError: reply contained no JSON array of skill names: 
 unknown skill name -> ModelError: reply named unknown skill(s): ['not-a-real-skill']
 ```
 
-`run_skill_evals.py:174-181` now sends the skill under test, built from its own `SKILL.md`
+`scripts/run_skill_evals.py:272-279` now sends the skill under test, built from its own `SKILL.md`
 description, under a system prompt free of the scored vocabulary:
 
 ```
