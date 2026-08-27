@@ -52,27 +52,7 @@ Two reasons the overwrite is not defensible as replace-by-title:
 
 ## The fix
 
-Change the write mode at `System/mcp/server.py:589` from `'w'` to `'x'`:
-
-```python
-with open(filepath, 'x') as f:
-```
-
-That is the whole fix. `'x'` refuses to open a file that already exists, raising
-`FileExistsError`, which the `except Exception` at `System/mcp/server.py:597` already
-catches and turns into `success: False`. The existing file is left untouched:
-
-```
-'x' alone -> {'success': False, 'error': "[Errno 17] File exists: '/tmp/.../t.md'"}
-file preserved: True
-```
-
-No separate existence check is needed for correctness.
-
-### Optional: a better error message
-
-`'x'` returns a raw errno string. If the caller deserves something clearer, add an
-explicit check after `filepath` is built at `System/mcp/server.py:571`:
+Check for the file explicitly, after `filepath` is built at `System/mcp/server.py:571`:
 
 ```python
 if filepath.exists():
@@ -85,13 +65,29 @@ if filepath.exists():
     return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 ```
 
-This is a message improvement, not a second layer of protection. Keep `'x'` regardless,
-since it is what actually prevents the overwrite.
+"This task already exists" is a normal, expected outcome that the caller needs to act on,
+so it has to be a distinguishable result, not an exception string.
 
-The check does not guard a race. Everything between the check and the write is
-synchronous with no `await`, so no other coroutine in this single-threaded stdio server
-can interleave. Only a second process writing the same path could, which `'x'` handles on
-its own.
+### Why mode 'x' is not sufficient on its own
+
+Changing `System/mcp/server.py:589` to `open(filepath, 'x')` does stop the overwrite.
+`FileExistsError` reaches the `except Exception` at `System/mcp/server.py:597` and comes
+back as `success: False` with the file intact.
+
+But that handler flattens every failure into the same shape, so an expected outcome and a
+real I/O fault become indistinguishable:
+
+```
+already exists : {"success": false, "error": "[Errno 17] File exists: '/abs/.../already.md'"}
+bad path       : {"success": false, "error": "[Errno 2] No such file or directory: '/abs/...'"}
+```
+
+An agent consuming this cannot tell "the task is already there, move on" from "the write
+failed, retry or escalate" without string-matching errno text. It also leaks the absolute
+filesystem path into the response.
+
+Keep `'x'` as a backstop against a second process writing the same path, but it is not
+load-bearing. The explicit check is the fix.
 
 ## Second call site
 
