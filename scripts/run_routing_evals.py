@@ -45,6 +45,46 @@ def route_skills(text: str) -> set[str]:
     return selected
 
 
+def validate_cases(cases: list[dict]) -> list[str]:
+    """Check routing cases before scoring; nothing else validates this file.
+
+    validate_skill_eval_cases.py only globs Evals/skills/cases/*.json, and routing_cases.json
+    sits a level above that, so without this a malformed case fails silently. A skill named in
+    both should_select and should_not_select is the worst of them: the closed-world pass rule
+    ignores should_not_select entirely, so the contradiction passes instead of being caught.
+    """
+    errors: list[str] = []
+    known = set(KEYWORD_RULES)
+    seen: set[str] = set()
+
+    for position, case in enumerate(cases, start=1):
+        case_id = case.get("id") or f"<case {position}>"
+        if "id" not in case:
+            errors.append(f"{case_id}: missing 'id'")
+        elif case_id in seen:
+            errors.append(f"{case_id}: duplicate id")
+        seen.add(case_id)
+
+        if not str(case.get("input", "")).strip():
+            errors.append(f"{case_id}: missing or empty 'input'")
+
+        should = set(case.get("should_select", []))
+        should_not = set(case.get("should_not_select", []))
+        if not should:
+            errors.append(f"{case_id}: 'should_select' must be a non-empty list")
+
+        contradictory = should & should_not
+        if contradictory:
+            errors.append(
+                f"{case_id}: {sorted(contradictory)} listed in both should_select and "
+                "should_not_select"
+            )
+        for name in sorted((should | should_not) - known):
+            errors.append(f"{case_id}: unknown skill '{name}' (not in KEYWORD_RULES)")
+
+    return errors
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run routing evals.")
     parser.add_argument("--min-pass-rate", type=float, default=1.0)
@@ -54,6 +94,13 @@ def main() -> int:
     cases = data.get("cases", [])
     if not cases:
         print("ERROR: no routing cases found")
+        return 2
+
+    case_errors = validate_cases(cases)
+    if case_errors:
+        print(f"ERROR: {len(case_errors)} invalid routing case(s) in {CASES_PATH.relative_to(ROOT)}")
+        for err in case_errors:
+            print(f"- {err}")
         return 2
 
     results = []

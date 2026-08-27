@@ -1,6 +1,6 @@
 # Fix notes
 
-Status: items 3, 8, 9, 10, 11 and 15 are applied. The rest are documented only. Findings from an audit of
+Status: items 3, 8, 9, 10, 11, 15 and 17 are applied. The rest are documented only. Findings from an audit of
 `System/mcp/server.py`, `scripts/`, and `setup.sh`. Each fix below was checked against the
 real code path before being written down.
 
@@ -558,6 +558,45 @@ Making these measure anything real means the routing decision has to come from w
 actually routes: a model given the routing policy and the skill list, behind a `--provider`
 flag mirroring `run_skill_evals.py`, with fixtures kept for offline runs. That is a change
 of purpose for both files, not a patch.
+
+## 17. Nothing validated routing_cases.json (APPLIED)
+
+Added `validate_cases` at `scripts/run_routing_evals.py:38-73`, called before scoring.
+
+`validate_skill_eval_cases.py` globs `Evals/skills/cases/*.json`, and `routing_cases.json`
+sits one level above that, so no schema check covered it at all. Two consequences went
+unreported until they were tested for:
+
+A misspelt skill in `should_select` made a case permanently unpassable with no diagnostic
+anywhere, since the name can never be selected:
+
+```
+typo case: selected=['verification'] missing=['verifcation'] -> can NEVER pass, nothing warns
+```
+
+Worse, the closed-world rule from item 15 removed the only thing that caught a
+self-contradictory case. Before that change `should_not_select` failed it; afterwards it
+passes silently:
+
+```
+contradictory case should_select=['tdd'] should_not_select=['tdd']
+selection ['tdd']: old rule passes=False   current rule passes=True
+```
+
+That is a regression item 15 introduced. Rather than restore a redundant scoring term, the
+contradiction is now rejected at load time, along with the other malformations:
+
+```
+contradiction: ['tdd'] listed in both should_select and should_not_select
+typo:          unknown skill 'verifcation' (not in KEYWORD_RULES)
+bogus:         unknown skill 'nonexistent-skill' (not in KEYWORD_RULES)
+dup:           duplicate id
+dup:           missing or empty 'input'
+dup:           'should_select' must be a non-empty list
+```
+
+Verified end to end: a contradictory cases file exits 2 with the error above, and the real
+`routing_cases.json` reports no errors and still passes 5/5.
 
 ## Verifying the fixes
 
