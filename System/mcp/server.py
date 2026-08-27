@@ -50,6 +50,7 @@ DEDUP_CONFIG = {
 }
 
 VALID_CATEGORIES = {"technical", "outreach", "research", "writing", "admin", "personal", "other"}
+VALID_PRIORITIES = {"P0", "P1", "P2", "P3"}
 
 def parse_yaml_frontmatter(content: str) -> tuple[dict, str]:
     """Parse YAML frontmatter from markdown content"""
@@ -333,13 +334,19 @@ def get_next_actions(item: str, category: str) -> str:
     
     return '\n'.join(actions)
 
+def slugify(title: str) -> str:
+    """Lowercase hyphenated slug for a title, or '' when nothing usable survives.
+
+    Returning '' rather than a fallback lets callers reject a title like '!!!' up front.
+    Silently naming it untitled-task.md made that name a junk drawer: the first such title
+    won it, and every later one was refused with a confusing 'Task already exists'.
+    """
+    normalized = re.sub(r"[^\w\s-]", "", title).strip().lower()
+    return re.sub(r"[-\s]+", "-", normalized).strip("-")
+
 def to_slug_filename(title: str) -> str:
     """Convert a task title into a lowercase hyphenated filename."""
-    normalized = re.sub(r"[^\w\s-]", "", title).strip().lower()
-    slug = re.sub(r"[-\s]+", "-", normalized).strip("-")
-    if not slug:
-        slug = "untitled-task"
-    return f"{slug}.md"
+    return f"{slugify(title) or 'untitled-task'}.md"
 
 def render_task_body(title: str, category: str, created_date: str, content: str = "") -> str:
     """Render task markdown using repository task template."""
@@ -366,7 +373,10 @@ def update_file_frontmatter(filepath: Path, updates: dict) -> bool:
         
         # Reconstruct file
         yaml_str = yaml.dump(metadata, default_flow_style=False, sort_keys=False)
-        new_content = f"---\n{yaml_str}---\n{body}"
+        # parse_yaml_frontmatter leaves the newlines that followed the closing --- inside
+        # body, so appending our own separator to them added one blank line per update,
+        # without limit. Strip theirs and write exactly one.
+        new_content = f"---\n{yaml_str}---\n\n{body.lstrip(chr(10))}"
         
         with open(filepath, 'w') as f:
             f.write(new_content)
@@ -525,7 +535,17 @@ async def handle_call_tool(
     name: str, arguments: dict | None
 ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
     """Handle tool calls"""
-    
+    # `is None`, not truthiness: an explicit empty dict means the same as no arguments here,
+    # but the required-field checks below are what actually report a missing value.
+    if arguments is None:
+        arguments = {}
+
+    def _error(message: str) -> list[types.TextContent]:
+        return [types.TextContent(
+            type="text",
+            text=json.dumps({"success": False, "error": message}, indent=2, cls=DateTimeEncoder),
+        )]
+
     if name == "list_tasks":
         tasks = get_all_tasks()
         
@@ -557,18 +577,43 @@ async def handle_call_tool(
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
     elif name == "create_task":
-        title = arguments['title']
+        title = str(arguments.get('title') or '').strip()
+        if not title:
+            return _error("'title' is required and must be non-empty")
+        if not slugify(title):
+            return _error(f"'title' has no characters usable in a filename: {title!r}")
+
         category = arguments.get('category', 'other')
         priority = arguments.get('priority', 'P2')
-        estimated_time = arguments.get('estimated_time', 30)
         content = arguments.get('content', '')
         created_date = datetime.now().strftime("%Y-%m-%d")
         if category not in VALID_CATEGORIES:
             category = "other"
-        
+        # An unvalidated priority reached the frontmatter verbatim, where check_priority_limits
+        # counted it against no threshold and get_task_summary omitted it from every bucket.
+        if priority not in VALID_PRIORITIES:
+            priority = "P2"
+        # A string here crashed get_task_summary's sum() with a TypeError.
+        try:
+            estimated_time = int(arguments.get('estimated_time', 30))
+        except (TypeError, ValueError):
+            estimated_time = 30
+
         # Create filename
         filename = to_slug_filename(title)
         filepath = TASKS_DIR / filename
+
+        # Refusing is the whole fix. Overwriting reset an in-progress task to a blank
+        # template while reporting success, and "already exists" is a normal outcome the
+        # caller must be able to distinguish from a genuine write failure.
+        if filepath.exists():
+            result = {
+                "success": False,
+                "error": f"Task already exists: {filename}",
+                "existing_file": filename,
+                "hint": "Use update_task_status to change status, or pass a distinct title.",
+            }
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
         
         # Create task metadata
         metadata = {
@@ -586,7 +631,8 @@ async def handle_call_tool(
         file_content = f"---\n{yaml_str}---\n\n{task_body}"
         
         try:
-            with open(filepath, 'w') as f:
+            # 'x' as a backstop for a second process racing the check above.
+            with open(filepath, 'x') as f:
                 f.write(file_content)
             
             result = {
@@ -603,8 +649,12 @@ async def handle_call_tool(
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
     elif name == "update_task_status":
-        task_file = arguments['task_file']
-        status = arguments['status']
+        task_file = str(arguments.get('task_file') or '').strip()
+        status = str(arguments.get('status') or '').strip()
+        if not task_file:
+            return _error("'task_file' is required and must be non-empty")
+        if not status:
+            return _error("'status' is required and must be non-empty")
         
         if not task_file.endswith('.md'):
             task_file += '.md'
@@ -679,9 +729,11 @@ async def handle_call_tool(
         all_tasks = get_all_tasks()
         active_tasks = [t for t in all_tasks if t.get('status') != 'd']
 
-        priority_counts = Counter(task['priority'] for task in active_tasks)
-        status_counts = Counter(task['status'] for task in active_tasks)
-        category_counts = Counter(task['category'] for task in active_tasks)
+        # Direct subscripting took the whole tool down on one task file missing a field.
+        # Defaults match get_task_summary above.
+        priority_counts = Counter(task.get('priority', 'P2') for task in active_tasks)
+        status_counts = Counter(task.get('status', 'n') for task in active_tasks)
+        category_counts = Counter(task.get('category', 'other') for task in active_tasks)
 
         # Check backlog
         backlog_items = 0
@@ -831,6 +883,7 @@ async def handle_call_tool(
             "potential_duplicates": [],
             "needs_clarification": [],
             "auto_created": [],
+            "skipped_existing": [],
             "summary": {}
         }
         
@@ -866,10 +919,20 @@ async def handle_call_tool(
                 # Auto-create if requested
                 if auto_create:
                     # Create the task file
+                    if not slugify(item):
+                        result["skipped_existing"].append(
+                            f"<unusable title: {item!r}>")
+                        continue
                     safe_filename = to_slug_filename(item)
                     task_file = TASKS_DIR / safe_filename
                     created_date = datetime.now().strftime("%Y-%m-%d")
-                    
+
+                    # Same guard as create_task, reported rather than raised: this call
+                    # processes a batch, so one collision must not fail the rest.
+                    if task_file.exists():
+                        result["skipped_existing"].append(safe_filename)
+                        continue
+
                     metadata = {
                         "title": item,
                         "category": guess_category(item),
@@ -882,10 +945,13 @@ async def handle_call_tool(
                     yaml_str = yaml.dump(metadata, default_flow_style=False, sort_keys=False)
                     content = f"---\n{yaml_str}---\n\n{render_task_body(item, metadata['category'], created_date)}"
                     
-                    with open(task_file, 'w') as f:
+                    with open(task_file, 'x') as f:
                         f.write(content)
                     
                     result["auto_created"].append(safe_filename)
+                    # Without this, existing_tasks stayed frozen at its pre-loop snapshot and
+                    # two near-identical items in one batch were both created unflagged.
+                    existing_tasks.append({**metadata, "filename": safe_filename, "body_content": ""})
         
         # Add summary
         result["summary"] = {
@@ -894,6 +960,7 @@ async def handle_call_tool(
             "duplicates_found": len(result["potential_duplicates"]),
             "needs_clarification": len(result["needs_clarification"]),
             "auto_created": len(result["auto_created"]),
+            "skipped_existing": len(result["skipped_existing"]),
             "recommendations": []
         }
         
@@ -978,7 +1045,9 @@ async def handle_call_tool(
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 
     elif name == "annotate_eval":
-        eval_file = arguments['eval_file']
+        eval_file = str(arguments.get('eval_file') or '').strip()
+        if not eval_file:
+            return _error("'eval_file' is required and must be non-empty")
         if not eval_file.endswith('.md'):
             eval_file += '.md'
 

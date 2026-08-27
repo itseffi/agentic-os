@@ -1,13 +1,13 @@
 # Fix notes
 
-Status: items 3, 8, 9, 10, 11, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26 and 27 are applied. The rest are documented only. Findings from an audit of
+Status: items 1 to 11 and 15 to 28 are applied. Items 12, 13 and 14 remain decisions. Findings from an audit of
 `System/mcp/server.py`, `scripts/`, and `setup.sh`. Each fix below was checked against the
 real code path before being written down.
 
 Open question: items 12, 13 and 14 are design calls, not mechanical fixes. They need a
 decision before anyone patches them.
 
-## 1. create_task overwrites existing tasks
+## 1. create_task overwrites existing tasks (APPLIED)
 
 `create_task` writes to a slug derived from the title with no existence check. Calling it
 with a title that already has a task file replaces that file with a blank template and
@@ -99,7 +99,7 @@ task file is already there". The response also leaks the absolute filesystem pat
 Keep `'x'` as a backstop against a second process writing the same path, but it is not
 load-bearing. The explicit check is the fix.
 
-## 2. get_system_status crashes on incomplete frontmatter
+## 2. get_system_status crashes on incomplete frontmatter (APPLIED)
 
 `System/mcp/server.py:682-684` subscripts directly where every sibling handler uses `.get()`:
 
@@ -161,7 +161,7 @@ count: 3 (was 6 before the fix)
 
 A sub-item appearing before any parent is treated as a top-level item rather than crashing.
 
-## 4. process_backlog_with_dedup misses duplicates within one batch
+## 4. process_backlog_with_dedup misses duplicates within one batch (APPLIED)
 
 `existing_tasks` is snapshotted at `System/mcp/server.py:823` and never updated inside the
 loop, so two similar items in the same call are both written without either being flagged.
@@ -184,7 +184,7 @@ The write at `System/mcp/server.py:881` is also unguarded and needs the same exi
 check as item 1. Here it should skip and report rather than error, since this call
 processes a batch: add the skipped filename to a `skipped` list in the result.
 
-## 5. create_task accepts invalid priority, estimated_time, and empty titles
+## 5. create_task accepts invalid priority, estimated_time, and empty titles (APPLIED)
 
 `category` is coerced to `"other"` when invalid (`System/mcp/server.py:566`). Nothing
 equivalent exists for the other inputs.
@@ -231,7 +231,7 @@ Verified behaviour:
 {'title': 'Real', 'estimated_time': '45'} -> ('Real', 'P2', 45)
 ```
 
-## 6. Handlers crash when arguments is null
+## 6. Handlers crash when arguments is null (APPLIED)
 
 `System/mcp/server.py:560` reads `arguments['title']` outside the `try`, which starts at
 line 588. A call with null arguments raises straight out of `handle_call_tool` instead of
@@ -256,7 +256,7 @@ empty dict is falsy and takes the same branch as `None` did. It converts the cra
 `KeyError`, so pair it with the explicit required-field checks from item 5 in each of the
 three handlers.
 
-## 7. update_file_frontmatter grows a blank line on every update
+## 7. update_file_frontmatter grows a blank line on every update (APPLIED)
 
 `parse_yaml_frontmatter` keeps the newlines that followed the closing `---` inside `body`
 (`System/mcp/server.py:63`), and `update_file_frontmatter` then adds its own separator on
@@ -1089,6 +1089,40 @@ original fixture-file instance from item 26 is the third.
 
 `test_empty_is_not_treated_as_absent` covers all three, including that `--skill tdd` still
 filters to 2 cases so the fix did not disable the flag.
+
+## 28. server.py had no tests, and one title class had no home (APPLIED)
+
+Added `scripts/test_mcp_server.py`, 28 checks, run with `python3 scripts/test_mcp_server.py`.
+The `mcp` package is not a dependency here, so it is stubbed; nothing under test touches the
+protocol layer.
+
+Items 1, 2, 4, 5, 6 and 7 were applied together and each is covered. Reverting them one at a
+time confirms the suite catches every one rather than passing by luck:
+
+```
+item 1 -> FAIL: 2 of 28 check(s) failed      (overwrite guard)
+item 2 -> FAIL: 1 of 27 check(s) failed      (get_system_status KeyError)
+item 4 -> FAIL: 2 of 28 check(s) failed      (stale existing_tasks snapshot)
+item 5 -> FAIL: 2 of 28 check(s) failed      (priority validation)
+item 6 -> FAIL: 3 of 28 check(s) failed      (null arguments)
+item 7 -> FAIL: 1 of 28 check(s) failed      (blank-line growth)
+```
+
+Writing the tests also turned up a case item 5 had missed. A title of `!!!` is non-empty, so
+the new emptiness check passed it, but every character is stripped by `to_slug_filename`,
+which fell back to `untitled-task.md`. That name was a junk drawer: the first such title
+claimed it and every later one was refused with a confusing "Task already exists:
+untitled-task.md".
+
+`slugify` now returns an empty string when nothing usable survives, `to_slug_filename` keeps
+the fallback for other callers, and `create_task` rejects the title up front:
+
+```
+'title' has no characters usable in a filename: '!!!'
+```
+
+`process_backlog_with_dedup` skips and reports such items rather than funnelling them into
+the same file.
 
 ## Verifying the fixes
 
