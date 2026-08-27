@@ -22,6 +22,13 @@ CASES_PATH = ROOT / "Evals" / "skills" / "routing_cases.json"
 RESULTS_DIR = ROOT / "Evals" / "skills" / "results"
 
 
+KEYWORD_CAVEAT = (
+    "--provider keyword scores the built-in keyword table in this file, not an agent's "
+    "routing. Use --provider openai to route with a model given the skill catalogue and the "
+    "AGENTS.md policy."
+)
+
+
 KEYWORD_RULES: dict[str, tuple[str, ...]] = {
     "verification": ("verify", "verification", "complete", "done", "evidence", "pass now"),
     "tdd": ("tdd", "test first", "test later", "failing test", "red green"),
@@ -211,6 +218,9 @@ def main() -> int:
             print(f"- {err}")
         return 2
 
+    # One string, printed and recorded, so the two cannot drift apart.
+    provider_caveat = KEYWORD_CAVEAT if args.provider == "keyword" else None
+
     results = []
     passed = 0
     for case in cases:
@@ -262,10 +272,7 @@ def main() -> int:
     payload = {
         "timestamp_utc": ts,
         "provider": args.provider,
-        "provider_caveat": (
-            "built-in keyword table, not an agent; measures the table, not skill routing"
-            if args.provider == "keyword" else None
-        ),
+        "provider_caveat": provider_caveat,
         "summary": {
             "total_cases": total,
             "passed_cases": passed,
@@ -276,10 +283,8 @@ def main() -> int:
     }
     out.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
 
-    if args.provider == "keyword":
-        print("NOTE: --provider keyword scores the built-in keyword table in this file, not an "
-              "agent's routing. Use --provider openai to route with a model given the skill "
-              "catalogue and the AGENTS.md policy.")
+    if provider_caveat:
+        print(f"NOTE: {provider_caveat}")
     print(f"PASS RATE: {passed}/{total} = {pass_rate:.3f}")
     print(f"RESULTS: {out.relative_to(ROOT)}")
     for r in results:

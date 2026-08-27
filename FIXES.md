@@ -751,6 +751,18 @@ Each self-referential axis is now disclosed independently:
 per caveat and the matching key in the written file, and that the one genuinely non-canned
 combination stays silent.
 
+Running that test by hand then showed the routing runner held two separate strings, one
+printed and one recorded, which had already drifted apart: stdout named `--provider openai`
+as the alternative while the file said only "built-in keyword table, not an agent". Skill
+evals and memory each used a single variable for both. Routing now does too, via
+`KEYWORD_CAVEAT`, and the test asserts the printed and recorded text are identical, which
+fails if they diverge again:
+
+```
+- run_routing_evals.py: printed and recorded caveats match
+  (printed {'something else entirely'} vs recorded {"--provider keyword scores ..."})
+```
+
 ## 19. The repository had no tests at all (APPLIED)
 
 Added `scripts/test_eval_runners.py`, 45 checks, run with `python3 scripts/test_eval_runners.py`.

@@ -359,6 +359,11 @@ def test_every_self_referential_axis_is_disclosed(stub: Stub) -> None:
         notes = [line for line in stdout.splitlines() if line.startswith("NOTE:")]
         check(f"{label}: prints one NOTE per caveat",
               len(notes) == len(expected_keys), f"{len(notes)} notes, expected {len(expected_keys)}")
+        # The printed text and the recorded text must be the same string, or they drift.
+        printed = {" ".join(n[len("NOTE:"):].split()) for n in notes}
+        recorded = {" ".join(str(payload[k]).split()) for k in expected_keys}
+        check(f"{label}: printed and recorded caveats match", printed == recorded,
+              f"printed {printed} vs recorded {recorded}")
 
     # The one combination with nothing self-referential must stay quiet.
     stub.set(mode="ok", reply="YES")
