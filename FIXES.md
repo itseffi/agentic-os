@@ -1,7 +1,8 @@
 # Fix notes
 
-Status: none applied. Findings from an audit of `System/mcp/server.py`, `scripts/`, and
-`setup.sh`. Each fix below was checked against the real code path before being written down.
+Status: items 3 and 8 are applied. The rest are documented only. Findings from an audit of
+`System/mcp/server.py`, `scripts/`, and `setup.sh`. Each fix below was checked against the
+real code path before being written down.
 
 Open question: items 12, 13 and 14 are design calls, not mechanical fixes. They need a decision
 before anyone patches them.
@@ -119,10 +120,10 @@ status_counts = Counter(task.get('status', 'n') for task in active_tasks)
 category_counts = Counter(task.get('category', 'other') for task in active_tasks)
 ```
 
-## 3. process_backlog never parses sub-items
+## 3. process_backlog never parses sub-items (APPLIED)
 
-`System/mcp/server.py:753` tests indentation on a string whose indentation has already been
-removed two lines earlier:
+Fixed in `System/mcp/server.py:744-758`. The old code tested indentation on a string whose
+indentation had already been removed two lines earlier:
 
 ```python
 stripped = line.strip()
@@ -130,10 +131,10 @@ stripped = line.strip()
 elif stripped.startswith('  - ') and current_item:
 ```
 
-That branch can never fire. Nested items are promoted to top-level, `subitems` is always
-empty, and `count` is inflated. A backlog with 2 items and 2 sub-items reports 4 items.
+That branch could never fire. Nested items were promoted to top-level, `subitems` was
+always empty, and `count` was inflated. A backlog with 2 items and 2 sub-items reported 4.
 
-Fix by measuring indentation on the raw line:
+Fixed by measuring indentation on the raw line:
 
 ```python
 for line in lines:
@@ -149,10 +150,10 @@ for line in lines:
         current_item = {'text': stripped[2:], 'subitems': []}
 ```
 
-Verified against the earlier failing input:
+Verified through the real `process_backlog` handler on the input that used to fail:
 
 ```
-top-level: 3 (expected 3)
+count: 3 (was 6 before the fix)
   'Ship the pricing page' subitems=['draft copy', 'get review']
   'Email Dana'            subitems=['about Q3']
   'Orphan'                subitems=[]
@@ -284,10 +285,10 @@ new_content = f"---\n{yaml_str}---\n\n{body.lstrip(chr(10))}"
 Verified idempotent across repeated updates, with body content and the applied status
 change both preserved.
 
-## 8. setup.sh overwrites GOALS.md
+## 8. setup.sh overwrites GOALS.md (APPLIED)
 
-`setup.sh:210` writes `GOALS.md` with an unguarded `cat >`, while `BACKLOG.md`
-(`setup.sh:133`) and `.gitignore` (`setup.sh:125`) are both guarded. Re-running setup
+Fixed in `setup.sh:210-218`. `GOALS.md` was written with an unguarded `cat >`, while
+`BACKLOG.md` (`setup.sh:133`) and `.gitignore` (`setup.sh:125`) were both guarded. Re-running setup
 destroys the file the README calls "the heart of your Personal OS", replacing it with five
 fresh answers and nine empty placeholders.
 
@@ -315,11 +316,23 @@ elif [ -f "GOALS.md" ]; then
 fi
 ```
 
-Verified across all three states: shipped template, user-edited file, and no file. The
-user-edited case keeps its content in the backup.
+Verified end to end by running the real `setup.sh` with piped answers in all three states.
+Each exits 0; the user-edited case keeps its content in the backup:
+
+```
+STATE 1 shipped template  -> "GOALS.md is the unedited template; generating your version"
+                             generated? 1 | role captured? 1 | backups: 0
+STATE 2 user-edited       -> "Existing GOALS.md backed up to GOALS.md.backup-20260827145445"
+                             backups: 1 | original text preserved in backup? 1
+STATE 3 no file           -> generated? 1 | backups: 0
+```
 
 The questions at `setup.sh:157-203` still run in every case, which is correct once the
 existing file is backed up rather than discarded.
+
+Open point: the backups are untracked files holding personal goals, in a repository whose
+`.gitignore` is explicitly privacy-first. Adding `GOALS.md.backup-*` to `.gitignore` would
+match that intent, but it was left out as it goes beyond the fix.
 
 ## 9. setup.sh reports .gitignore preserved when it does not exist
 

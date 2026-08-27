@@ -207,6 +207,16 @@ print_header "Generating Your GOALS.md"
 
 CURRENT_DATE=$(date +"%B %d, %Y")
 
+# The repo ships an unfilled GOALS.md template, so a plain existence check would
+# skip generation on every fresh clone. Recognise the template, back up anything else.
+if [ -f "GOALS.md" ] && grep -q '\[Goal Name\]' "GOALS.md"; then
+    print_info "GOALS.md is the unedited template; generating your version"
+elif [ -f "GOALS.md" ]; then
+    goals_backup="GOALS.md.backup-$(date +%Y%m%d%H%M%S)"
+    cp "GOALS.md" "$goals_backup"
+    print_warning "Existing GOALS.md backed up to $goals_backup"
+fi
+
 cat > "GOALS.md" << EOF
 # Goals & Strategic Direction
 

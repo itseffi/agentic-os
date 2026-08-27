@@ -743,15 +743,19 @@ async def handle_call_tool(
                 
                 for line in lines:
                     stripped = line.strip()
-                    if stripped.startswith('- '):
+                    if not stripped.startswith('- '):
+                        continue
+                    # Measure indentation on the raw line; stripped has already lost it
+                    indent = len(line) - len(line.lstrip())
+                    if indent >= 2 and current_item is not None:
+                        current_item['subitems'].append(stripped[2:])
+                    else:
                         if current_item:
                             items.append(current_item)
                         current_item = {
                             'text': stripped[2:],
                             'subitems': []
                         }
-                    elif stripped.startswith('  - ') and current_item:
-                        current_item['subitems'].append(stripped[4:])
                 
                 if current_item:
                     items.append(current_item)
