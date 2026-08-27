@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -24,10 +25,12 @@ KEYWORD_RULES: dict[str, tuple[str, ...]] = {
 
 
 def route_skills(text: str) -> set[str]:
+    # Match on word boundaries: bare substrings fire on 'plan' inside 'explanation',
+    # 'complete' inside 'incomplete', 'done' inside 'abandoned', 'steps' inside 'footsteps'.
     low = text.lower()
     selected: set[str] = set()
     for skill, patterns in KEYWORD_RULES.items():
-        if any(p in low for p in patterns):
+        if any(re.search(rf"\b{re.escape(p)}\b", low) for p in patterns):
             selected.add(skill)
     return selected
 
@@ -51,7 +54,10 @@ def main() -> int:
         should_not = set(case.get("should_not_select", []))
         missing = sorted(list(should - selected))
         false_pos = sorted(list(selected & should_not))
-        ok = not missing and not false_pos
+        # Closed world: should_select is the complete expected answer. Without this a
+        # router firing every non-forbidden skill scores the same as the correct one.
+        unexpected = sorted(list(selected - should))
+        ok = not missing and not unexpected
         if ok:
             passed += 1
         results.append(
@@ -63,6 +69,7 @@ def main() -> int:
                 "should_not_select": sorted(should_not),
                 "missing_required": missing,
                 "forbidden_selected": false_pos,
+                "unexpected_selected": unexpected,
                 "passed": ok,
             }
         )

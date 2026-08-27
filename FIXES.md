@@ -1,11 +1,12 @@
 # Fix notes
 
-Status: items 3, 8, 9, 10 and 11 are applied. The rest are documented only. Findings from an audit of
+Status: items 3, 8, 9, 10, 11 and 15 are applied. The rest are documented only. Findings from an audit of
 `System/mcp/server.py`, `scripts/`, and `setup.sh`. Each fix below was checked against the
 real code path before being written down.
 
-Open question: items 12, 13 and 14 are design calls, not mechanical fixes. They need a decision
-before anyone patches them.
+Open question: items 12, 13, 14 and 16 are design calls, not mechanical fixes. They need a
+decision before anyone patches them. Item 16 is the most consequential: it explains why a
+passing eval suite is weak evidence about this repo.
 
 ## 1. create_task overwrites existing tasks
 
@@ -462,6 +463,88 @@ template and then runs setup gets a document organised on entirely different lin
 
 Needs a decision: make the generated file match the shipped template's structure, or
 replace the shipped template with the generated layout so there is one format.
+
+## 15. Routing eval matches bare substrings and scores only part of the answer (APPLIED)
+
+Fixed in `scripts/run_routing_evals.py:27-35` and `:55-60`.
+
+`route_skills` matched bare substrings, so keywords fired inside unrelated words:
+
+```
+'Write an explanation of the auth flow'   -> writing-plans      ('plan' in 'explanation')
+'The migration is incomplete'             -> verification, ...  ('complete' in 'incomplete')
+'We abandoned that approach'              -> verification       ('done' in 'abandoned')
+'Retrace your footsteps in the changelog' -> writing-plans      ('steps' in 'footsteps')
+```
+
+The scorer could not catch that, because it only checked `should_select` and
+`should_not_select`. Each case constrains 2 or 3 of the 5 skills and ignores the rest, so a
+router returning every skill a case does not explicitly forbid scored 5/5, the same as the
+correct router.
+
+Both fixed. Matching is now on word boundaries:
+
+```python
+if any(re.search(rf"\b{re.escape(p)}\b", low) for p in patterns):
+```
+
+and `should_select` is treated as the complete expected answer:
+
+```python
+unexpected = sorted(list(selected - should))
+ok = not missing and not unexpected
+```
+
+Neither change required rewriting a case:
+
+```
+                              current scorer   closed-world
+current substring router          5/5              5/5
+word-boundary router              5/5              5/5
+imprecise router                  5/5              0/5
+```
+
+Verified against the live script after the change: the real suite still passes 5/5, the
+imprecise router drops to 0/5, and three of the four false positives become `(none)`.
+`The migration is incomplete` still selects `writing-plans`, correctly, because *migration*
+is a genuine keyword for that skill.
+
+## 16. Two of the three eval runners can only test themselves
+
+This is the reason item 15 matters less than it looks, and it needs a decision.
+
+`run_routing_evals.py` defines the router it evaluates. `KEYWORD_RULES` and `route_skills`
+sit at the top of the same file, and `scripts/run_routing_evals.py:52` scores that stub:
+
+```python
+selected = route_skills(case["input"])
+```
+
+The file's docstring says "did the agent pick the right skill?", but no agent is consulted.
+Its entire import list is `argparse`, `json`, `re`, `datetime`, `pathlib`. Nothing reads
+`.agents/skills/`, nothing reads the routing policy in `AGENTS.md`, nothing reaches a model,
+and there is no `--provider` flag, so there is no way to point it at a real agent. The
+keyword table and the cases were written together, and the table is tuned until the cases
+pass. 5/5 is guaranteed by construction.
+
+`run_memory_impact_evals.py:44-45` has the same shape. Both sides of the A/B comparison are
+read out of the cases file:
+
+```python
+baseline = case["baseline_response"]
+with_memory = case["memory_search_response"]
+```
+
+`run_skill_evals.py` is the only one with a real path, `_query_openai_compatible` at
+`scripts/run_skill_evals.py:178`, and it defaults to `fixture`.
+
+Consequence worth stating plainly: "the eval suite passes" is not evidence that skill
+routing or memory search works. It should not be cited as such.
+
+Making these measure anything real means the routing decision has to come from whatever
+actually routes: a model given the routing policy and the skill list, behind a `--provider`
+flag mirroring `run_skill_evals.py`, with fixtures kept for offline runs. That is a change
+of purpose for both files, not a patch.
 
 ## Verifying the fixes
 
