@@ -31,6 +31,7 @@ class CaseResult:
     passed: bool
     response: str
     checks: list[dict[str, Any]]
+    rejected: list[str] | None = None
     error: str | None = None
 
 
@@ -96,25 +97,73 @@ def _system_prompt(skill: str) -> str:
     )
 
 
+def _find_rejections(case: dict[str, Any], response: str) -> list[str]:
+    """Phrases whose presence fails the case outright.
+
+    Token-set overlap is unordered and blind to negation: 'enforces failing test first' and
+    'skip the failing test first' share every token, so a response arguing against the skill
+    scores 1.00. Reject phrases catch that inversion without needing a model.
+    """
+    low = response.lower()
+    return [p for p in case.get("reject", []) if str(p).lower() in low]
+
+
+def _judge_expectation(
+    expectation: str,
+    response: str,
+    *,
+    base_url: str,
+    model: str,
+    api_key: str,
+) -> tuple[bool, str]:
+    """Ask a model whether the response satisfies the expectation. Returns (verdict, raw)."""
+    verdict = query_chat(
+        base_url=base_url,
+        model=model,
+        api_key=api_key,
+        system_prompt=(
+            "You grade whether a response satisfies a stated expectation. Judge the stance "
+            "the response actually takes, not whether it reuses the expectation's words. "
+            "A response arguing against the expectation does not satisfy it. "
+            "Reply with exactly YES or NO."
+        ),
+        user_input=f"Expectation:\n{expectation}\n\nResponse:\n{response}",
+    )
+    return verdict.strip().upper().startswith("YES"), verdict.strip()
+
+
 def _evaluate_case(
     *,
     skill: str,
     case: dict[str, Any],
     response: str,
     threshold: float,
+    judge: dict[str, str] | None = None,
 ) -> CaseResult:
     checks = []
     for expected in case["expected"]:
-        score = _score_expectation(expected, response)
-        checks.append(
-            {
-                "expected": expected,
-                "score": round(score, 3),
-                "passed": score >= threshold,
-            }
-        )
-    passed = all(c["passed"] for c in checks)
-    return CaseResult(skill=skill, case_id=case["id"], passed=passed, response=response, checks=checks)
+        if judge:
+            ok, raw = _judge_expectation(expected, response, **judge)
+            checks.append({"expected": expected, "verdict": raw[:80], "passed": ok})
+        else:
+            score = _score_expectation(expected, response)
+            checks.append(
+                {
+                    "expected": expected,
+                    "score": round(score, 3),
+                    "passed": score >= threshold,
+                }
+            )
+    rejected = _find_rejections(case, response)
+    passed = all(c["passed"] for c in checks) and not rejected
+    return CaseResult(
+        skill=skill,
+        case_id=case["id"],
+        passed=passed,
+        response=response,
+        checks=checks,
+        rejected=rejected or None,
+    )
 
 
 def main() -> int:
@@ -126,6 +175,13 @@ def main() -> int:
         help="Where responses come from: fixture files or OpenAI-compatible model endpoint.",
     )
     parser.add_argument("--skill", help="Run only one skill case file (e.g. verification).")
+    parser.add_argument(
+        "--judge",
+        choices=["overlap", "openai"],
+        default="overlap",
+        help="How expectations are graded. 'overlap' is token-set matching, which is blind "
+             "to negation; 'openai' asks a model whether the response satisfies each one.",
+    )
     parser.add_argument(
         "--threshold",
         type=float,
@@ -158,6 +214,13 @@ def main() -> int:
     if args.provider == "openai" and not args.model:
         print("ERROR: --model is required when --provider openai")
         return 2
+    if args.judge == "openai" and not args.model:
+        print("ERROR: --model is required when --judge openai")
+        return 2
+
+    judge = None
+    if args.judge == "openai":
+        judge = {"base_url": args.base_url, "model": args.model, "api_key": args.api_key}
 
     casesets = _load_case_files(args.skill)
     if not casesets:
@@ -193,14 +256,21 @@ def main() -> int:
                         )
                     )
                     continue
-            results.append(
-                _evaluate_case(
-                    skill=skill,
-                    case=case,
-                    response=response,
-                    threshold=args.threshold,
+            try:
+                results.append(
+                    _evaluate_case(
+                        skill=skill,
+                        case=case,
+                        response=response,
+                        threshold=args.threshold,
+                        judge=judge,
+                    )
                 )
-            )
+            except ModelError as exc:
+                results.append(
+                    CaseResult(skill=skill, case_id=case["id"], passed=False,
+                               response=response, checks=[], error=f"judge failed: {exc}")
+                )
 
     total = len(results)
     passed = sum(1 for r in results if r.passed)
@@ -226,6 +296,7 @@ def main() -> int:
                 "passed": r.passed,
                 "checks": r.checks,
                 "response": r.response,
+                "rejected": r.rejected,
                 "error": r.error,
             }
             for r in results
@@ -237,7 +308,8 @@ def main() -> int:
     print(f"RESULTS: {out_path.relative_to(ROOT)}")
     for r in results:
         status = "PASS" if r.passed else "FAIL"
-        suffix = f"  ({r.error})" if r.error else ""
+        suffix = f"  ({r.error})" if r.error else (
+            f"  (rejected: {', '.join(r.rejected)})" if r.rejected else "")
         print(f"- [{status}] {r.skill}/{r.case_id}{suffix}")
 
     if pass_rate < args.min_pass_rate:

@@ -1,6 +1,6 @@
 # Fix notes
 
-Status: items 3, 8, 9, 10, 11, 15, 16 and 17 are applied. The rest are documented only. Findings from an audit of
+Status: items 3, 8, 9, 10, 11, 15, 16, 17 and 18 are applied. The rest are documented only. Findings from an audit of
 `System/mcp/server.py`, `scripts/`, and `setup.sh`. Each fix below was checked against the
 real code path before being written down.
 
@@ -637,6 +637,58 @@ dup:           'should_select' must be a non-empty list
 
 Verified end to end: a contradictory cases file exits 2 with the error above, and the real
 `routing_cases.json` reports no errors and still passes 5/5.
+
+## 18. Token-set scoring cannot tell a skill from its opposite (APPLIED)
+
+Found by running `tdd/tdd-code-first-request` rather than trusting that it passed.
+
+The case expects `enforces failing test first` and `uses red green refactor sequence`.
+`_score_expectation` compares unordered token sets, so it is blind to negation. A response
+arguing *against* TDD outscores the correct one:
+
+```
+correct fixture  scores=[0.75, 0.8]  passes=True
+INVERTED answer  scores=[1.0, 1.0]   passes=True
+```
+
+The inverted answer was "Skip the failing test first, red green refactor is a waste of time,
+enforces nothing, just uses your judgement and ships the sequence." It shares every token
+with the expectations. The case was passing for the wrong reason, and would pass for advice
+that actively contradicts the skill.
+
+The fixture is also written from the expectations, supplying 7 of their 9 tokens, so the
+fixture path passes by construction the same way item 16's runners did.
+
+### Two fixes
+
+An offline `reject` list per case, checked in `_find_rejections`. Any listed phrase present
+in the response fails the case outright, whatever the overlap score:
+
+```
+correct fixture  passed=True   rejected=None
+INVERTED answer  passed=False  rejected=['waste of time', 'skip the failing test']
+```
+
+`reject` is optional, validated by `validate_skill_eval_cases.py`, and populated for both
+tdd cases.
+
+And `--judge openai`, which grades each expectation with a model instead of token overlap,
+using the client from item 16. Its prompt says to judge the stance the response takes rather
+than whether it reuses the expectation's words. Verified against a stub:
+
+```
+judge answers YES -> PASS RATE: 2/2 = 1.000  rc=0
+judge answers NO  -> PASS RATE: 0/2 = 0.000  rc=1
+```
+
+Judge failures are recorded per case like any other model error rather than aborting the run.
+
+### What this does not fix
+
+`reject` is a blocklist, so it catches the inversions someone thought to write down and
+nothing else. The default remains `--judge overlap`, which stays gameable by any response
+that reuses the right words in the wrong order. Only the judge actually evaluates the claim
+the expectation makes, and it is verified against a stub, not a real model.
 
 ## Verifying the fixes
 

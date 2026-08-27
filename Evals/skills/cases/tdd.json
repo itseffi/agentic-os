@@ -8,6 +8,13 @@
       "expected": [
         "enforces failing test first",
         "uses red green refactor sequence"
+      ],
+      "reject": [
+        "waste of time",
+        "skip the failing test",
+        "write the code first",
+        "test later is fine",
+        "tests can come later"
       ]
     },
     {
@@ -16,6 +23,12 @@
       "expected": [
         "rejects manual test as substitute",
         "requires test-first workflow"
+      ],
+      "reject": [
+        "waste of time",
+        "manual testing is enough",
+        "no need for automated tests",
+        "skip the failing test"
       ]
     }
   ]
