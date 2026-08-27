@@ -51,6 +51,8 @@ for path in sorted(CASES_DIR.glob("*.json")):
         exp = case.get("expected")
         if not isinstance(exp, list) or not exp:
             errors.append(f"{path}: case #{i} expected must be non-empty list")
+        elif any(not isinstance(e, str) or not e.strip() for e in exp):
+            errors.append(f"{path}: case #{i} 'expected' contains an empty string")
         if "reject" in case:
             rej = case["reject"]
             if not isinstance(rej, list) or not all(isinstance(r, str) and r.strip() for r in rej):

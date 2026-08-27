@@ -26,6 +26,7 @@ ROOT = SCRIPTS.parent
 sys.path.insert(0, str(SCRIPTS))
 
 import model_client  # noqa: E402
+import run_memory_impact_evals as memory  # noqa: E402
 import run_routing_evals as routing  # noqa: E402
 import run_skill_evals as skills  # noqa: E402
 
@@ -464,6 +465,62 @@ def test_scenario_references_are_validated() -> None:
           str(routing.validate_cases(neither)))
 
 
+def test_scoring_per_runner() -> None:
+    """Each runner scores differently; pin what each one actually means by a pass."""
+    # Routing: exact set equality, no partial credit either way.
+    for selected, should, expected in [({"tdd"}, {"tdd"}, True), (set(), {"tdd"}, False),
+                                       ({"tdd", "verification"}, {"tdd"}, False),
+                                       (set(), set(), True)]:
+        ok = not (should - selected) and not (selected - should)
+        check(f"routing {sorted(selected)} vs {sorted(should)}", ok is expected)
+
+    # Skill evals: unordered token ratio. Order-blindness is inherent to the metric and is
+    # pinned by test_overlap_judge_cannot_detect_stance; what must not happen is a free pass.
+    check("skill: exact match scores 1.0",
+          skills._score_expectation("enforces failing test first", "enforces failing test first") == 1.0)
+    check("skill: partial match is a ratio",
+          skills._score_expectation("a b c d e", "a b c") == 0.6)
+    raises("skill: empty expectation is an error, not a 1.0",
+           lambda: skills._score_expectation("", "anything"), ValueError)
+
+    # Memory: contiguous phrase, not a bag of words.
+    check("memory: exact phrase matches",
+          memory._contains_phrase("verification before claiming", "verification before claiming"))
+    check("memory: shuffled words do not match",
+          not memory._contains_phrase("claiming verification before", "verification before claiming"))
+    check("memory: scattered words do not match",
+          not memory._contains_phrase(
+              "before I claim anything I run verification on the claiming step",
+              "verification before claiming"))
+    raises("memory: empty phrase is an error, not True",
+           lambda: memory._contains_phrase("anything", ""), ValueError)
+
+
+def test_no_vacuous_passes() -> None:
+    """A case with nothing to assert must be rejected, not scored as a pass."""
+    empty_lists = [{"id": "v", "input": "i", "baseline_response": "b",
+                    "memory_search_response": "w",
+                    "expected_when_enabled": [], "expected_missing_in_baseline": []}]
+    check("memory: empty expectation lists rejected",
+          any("vacuously" in e for e in memory.validate_cases(empty_lists)),
+          str(memory.validate_cases(empty_lists)))
+
+    empty_phrase = [{"id": "p", "input": "i", "baseline_response": "b",
+                     "memory_search_response": "w", "expected_when_enabled": ["  "]}]
+    check("memory: empty phrase rejected",
+          any("empty phrase" in e for e in memory.validate_cases(empty_phrase)),
+          str(memory.validate_cases(empty_phrase)))
+
+    missing_field = [{"id": "f", "input": "i", "expected_when_enabled": ["x"]}]
+    errors = memory.validate_cases(missing_field)
+    for field in ("baseline_response", "memory_search_response"):
+        check(f"memory: missing {field} rejected", any(field in e for e in errors), str(errors))
+
+    check("memory: shipped cases are valid",
+          memory.validate_cases(json.loads(
+              (ROOT / "Evals/memory/cases.json").read_text())["cases"]) == [])
+
+
 def main() -> int:
     stub = Stub()
     try:
@@ -480,6 +537,8 @@ def main() -> int:
         test_model_settings_are_required_not_defaulted()
         test_no_duplicated_prompts_across_suites()
         test_scenario_references_are_validated()
+        test_scoring_per_runner()
+        test_no_vacuous_passes()
         test_skill_prompt_is_not_contaminated()
     finally:
         stub.stop()

@@ -1,6 +1,6 @@
 # Fix notes
 
-Status: items 3, 8, 9, 10, 11, 15, 16, 17, 18, 19, 20, 21 and 22 are applied. The rest are documented only. Findings from an audit of
+Status: items 3, 8, 9, 10, 11, 15, 16, 17, 18, 19, 20, 21, 22 and 23 are applied. The rest are documented only. Findings from an audit of
 `System/mcp/server.py`, `scripts/`, and `setup.sh`. Each fix below was checked against the
 real code path before being written down.
 
@@ -900,6 +900,58 @@ while allowing identical ones, since identical now means both reference the same
 The migration was caught by the suite rather than by review: `test_closed_world_scoring` was
 still reading `case["input"]` and raised `KeyError: 'input'`, which is the first time this
 session that a regression was found by a test instead of by being pointed out.
+
+## 23. Scoring differed per runner, with vacuous passes in two of them (APPLIED)
+
+Tested each runner's scoring in isolation rather than through a green suite. Routing was
+sound; the other two were not.
+
+Routing scores exact set equality, no partial credit in either direction:
+
+```
+selected=tdd              should=tdd   pass=True
+selected=-                should=tdd   pass=False
+selected=tdd,verification should=tdd   pass=False
+```
+
+`run_memory_impact_evals._contains_phrase` did not do what its name says. It tested token-set
+subset membership, so it matched the words in any order, scattered anywhere in the response,
+and returned `True` for an empty phrase:
+
+```
+exact                         -> True
+SHUFFLED                      -> True
+SCATTERED across a sentence   -> True
+EMPTY PHRASE                  -> True
+```
+
+All 16 expectations across the shipped cases hold under strict contiguous matching too, so
+the loose reading bought nothing and only obscured what the check meant. It now matches a
+contiguous phrase, with the same lookaround anchoring used for routing keywords.
+
+Two vacuous passes, both now rejected rather than scored:
+
+- A skill expectation of `""` scored 1.00, because `_score_expectation` returned 1.0 for an
+  expectation with no tokens. It raises now, and the validator rejects empty strings inside
+  `expected`.
+- A memory case with both expectation lists empty passed with nothing asserted. And nothing
+  validated `Evals/memory/cases.json` at all, the same gap item 17 closed for the routing
+  cases and never closed here.
+
+`validate_cases` in the memory runner now checks ids, duplicates, the three required text
+fields, at least one expectation, and rejects empty phrases:
+
+```
+$ run_memory_impact_evals.py            # against a vacuous case file
+ERROR: 1 invalid case(s) in Evals/memory/cases.json
+- vacuous: needs at least one expectation; empty lists pass vacuously
+exit=2
+```
+
+`test_scoring_per_runner` pins what a pass means in each runner, and `test_no_vacuous_passes`
+covers the rejections. Order-blindness in the skill metric is left as-is and stays pinned by
+`test_overlap_judge_cannot_detect_stance`; it is inherent to token overlap, which is why
+`--judge openai` exists.
 
 ## Verifying the fixes
 

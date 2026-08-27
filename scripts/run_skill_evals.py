@@ -59,7 +59,9 @@ def _tokens(text: str) -> set[str]:
 def _score_expectation(expected: str, response: str) -> float:
     exp = _tokens(expected)
     if not exp:
-        return 1.0
+        # Returning 1.0 here made an empty expectation a free pass. The validator rejects
+        # empty strings, so reaching this is a bug in the caller, not a case to score.
+        raise ValueError(f"expectation has no scoreable tokens: {expected!r}")
     got = _tokens(response)
     return len(exp & got) / len(exp)
 

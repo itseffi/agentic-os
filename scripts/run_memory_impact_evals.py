@@ -27,11 +27,51 @@ def _tokens(text: str) -> set[str]:
 
 
 def _contains_phrase(response: str, phrase: str) -> bool:
-    r = _tokens(response)
-    p = _tokens(phrase)
-    if not p:
-        return True
-    return p.issubset(r)
+    """True when `phrase` appears in `response` as a contiguous phrase.
+
+    This used to test token-subset membership despite its name, so it matched the words in
+    any order, scattered anywhere in the response, and returned True for an empty phrase.
+    All 16 expectations across the shipped cases hold either way, so the loose reading bought
+    nothing and hid what the check meant.
+    """
+    if not phrase.strip():
+        raise ValueError("empty expectation phrase")
+    return re.search(r"(?<!\w)" + re.escape(phrase.lower()) + r"(?!\w)", response.lower()) is not None
+
+
+def validate_cases(cases: list[dict]) -> list[str]:
+    """Check the memory cases; nothing validated this file before.
+
+    A case with both expectation lists empty scored a silent pass, and no validator covered
+    Evals/memory/cases.json at all.
+    """
+    errors: list[str] = []
+    seen: set[str] = set()
+    for position, case in enumerate(cases, start=1):
+        case_id = case.get("id") or f"<case {position}>"
+        if "id" not in case:
+            errors.append(f"{case_id}: missing 'id'")
+        elif case_id in seen:
+            errors.append(f"{case_id}: duplicate id")
+        seen.add(case_id)
+
+        for field in ("input", "baseline_response", "memory_search_response"):
+            if not str(case.get(field, "")).strip():
+                errors.append(f"{case_id}: missing or empty '{field}'")
+
+        enabled = case.get("expected_when_enabled", [])
+        absent = case.get("expected_missing_in_baseline", [])
+        if not enabled and not absent:
+            errors.append(f"{case_id}: needs at least one expectation; empty lists pass vacuously")
+        for name, phrases in (("expected_when_enabled", enabled),
+                              ("expected_missing_in_baseline", absent)):
+            if not isinstance(phrases, list):
+                errors.append(f"{case_id}: '{name}' must be a list")
+                continue
+            for phrase in phrases:
+                if not isinstance(phrase, str) or not phrase.strip():
+                    errors.append(f"{case_id}: '{name}' contains an empty phrase")
+    return errors
 
 
 def main() -> int:
@@ -43,6 +83,13 @@ def main() -> int:
     cases = data.get("cases", [])
     if not cases:
         print("ERROR: no memory impact cases found")
+        return 2
+
+    case_errors = validate_cases(cases)
+    if case_errors:
+        print(f"ERROR: {len(case_errors)} invalid case(s) in {CASES_PATH.relative_to(ROOT)}")
+        for err in case_errors:
+            print(f"- {err}")
         return 2
 
     results = []
