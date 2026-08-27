@@ -132,12 +132,13 @@ def test_closed_world_scoring() -> None:
     """should_select is the whole expected answer, not a lower bound."""
     cases = json.loads((ROOT / "Evals/skills/routing_cases.json").read_text())["cases"]
     every_skill = set(routing.KEYWORD_RULES)
+    scenarios = routing.load_scenarios()
 
     correct = imprecise = 0
     for case in cases:
         should = set(case.get("should_select", []))
         forbidden = set(case.get("should_not_select", []))
-        if routing.route_skills(case["input"]) == should:
+        if routing.route_skills(routing.case_input(case, scenarios)) == should:
             correct += 1
         # A router firing everything not explicitly forbidden used to score full marks.
         if (every_skill - forbidden) == should:
@@ -151,7 +152,7 @@ def test_case_validation() -> None:
     check("shipped cases are valid", routing.validate_cases(
         json.loads((ROOT / "Evals/skills/routing_cases.json").read_text())["cases"]) == [])
 
-    contradiction = [{"id": "c", "input": "x", "should_select": ["tdd"], "should_not_select": ["tdd"]}]
+    contradiction = [{"id": "c", "input": "x", "should_select": ["tdd"], "should_not_select": ["tdd"]}]  # noqa: E501
     errors = routing.validate_cases(contradiction)
     check("contradiction rejected", any("both should_select" in e for e in errors), str(errors))
 
@@ -415,6 +416,54 @@ def test_model_settings_are_required_not_defaulted() -> None:
               collapsed[:140] or "entry not found")
 
 
+def test_no_duplicated_prompts_across_suites() -> None:
+    """The same scenario must live in one place, not be copy-pasted between suites.
+
+    Three routing cases previously duplicated a skill case: one verbatim, two with wording
+    that had already drifted apart.
+    """
+    import difflib
+
+    scenarios = routing.load_scenarios()
+    prompts: list[tuple[str, str, str]] = []
+    for case in json.loads((ROOT / "Evals/skills/routing_cases.json").read_text())["cases"]:
+        prompts.append(("routing", case["id"], routing.case_input(case, scenarios)))
+    for path in sorted((ROOT / "Evals/skills/cases").glob("*.json")):
+        for case in json.loads(path.read_text())["cases"]:
+            prompts.append((f"skill:{path.stem}", case["id"], routing.case_input(case, scenarios)))
+
+    for i, (suite_a, id_a, text_a) in enumerate(prompts):
+        for suite_b, id_b, text_b in prompts[i + 1:]:
+            if suite_a == suite_b:
+                continue
+            ratio = difflib.SequenceMatcher(None, text_a.lower(), text_b.lower()).ratio()
+            # Identical is fine: it means both reference the same scenario id. Near-identical
+            # is the smell, because it means two copies that have started to diverge.
+            check(f"{id_a} vs {id_b}: not a drifted copy", ratio < 0.95 or text_a == text_b,
+                  f"similarity {ratio:.2f}: {text_a!r} vs {text_b!r}")
+
+    shared = [p for p in prompts if p[2] in scenarios.values()]
+    check("shared scenarios are actually referenced", len(shared) >= 6, f"{len(shared)} references")
+
+
+def test_scenario_references_are_validated() -> None:
+    """A case must supply a prompt exactly one way, and a bad scenario id must be caught."""
+    both = [{"id": "b", "input": "x", "scenario": "code-first-request", "should_select": ["tdd"]}]
+    check("input and scenario together rejected",
+          any("not both" in e for e in routing.validate_cases(both)),
+          str(routing.validate_cases(both)))
+
+    unknown = [{"id": "u", "scenario": "no-such-scenario", "should_select": ["tdd"]}]
+    check("unknown scenario rejected",
+          any("unknown scenario" in e for e in routing.validate_cases(unknown)),
+          str(routing.validate_cases(unknown)))
+
+    neither = [{"id": "n", "should_select": ["tdd"]}]
+    check("missing prompt rejected",
+          any("missing or empty" in e for e in routing.validate_cases(neither)),
+          str(routing.validate_cases(neither)))
+
+
 def main() -> int:
     stub = Stub()
     try:
@@ -429,6 +478,8 @@ def main() -> int:
         test_overlap_judge_cannot_detect_stance()
         test_every_self_referential_axis_is_disclosed(stub)
         test_model_settings_are_required_not_defaulted()
+        test_no_duplicated_prompts_across_suites()
+        test_scenario_references_are_validated()
         test_skill_prompt_is_not_contaminated()
     finally:
         stub.stop()

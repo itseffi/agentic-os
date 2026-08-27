@@ -7,6 +7,12 @@ import json
 
 ROOT = Path(__file__).resolve().parents[1]
 CASES_DIR = ROOT / "Evals" / "skills" / "cases"
+SCENARIOS_PATH = ROOT / "Evals" / "scenarios.json"
+
+SCENARIOS = (
+    json.loads(SCENARIOS_PATH.read_text(encoding="utf-8")).get("scenarios", {})
+    if SCENARIOS_PATH.exists() else {}
+)
 
 errors = []
 count = 0
@@ -31,9 +37,17 @@ for path in sorted(CASES_DIR.glob("*.json")):
         if not isinstance(case, dict):
             errors.append(f"{path}: case #{i} must be mapping")
             continue
-        for key in ("id", "input", "expected"):
+        for key in ("id", "expected"):
             if key not in case:
                 errors.append(f"{path}: case #{i} missing '{key}'")
+        # A case supplies its prompt inline or by shared scenario id, never both.
+        if "input" in case and "scenario" in case:
+            errors.append(f"{path}: case #{i} sets 'input' and 'scenario', not both")
+        elif "scenario" in case:
+            if case["scenario"] not in SCENARIOS:
+                errors.append(f"{path}: case #{i} unknown scenario '{case['scenario']}'")
+        elif not str(case.get("input", "")).strip():
+            errors.append(f"{path}: case #{i} missing or empty 'input'")
         exp = case.get("expected")
         if not isinstance(exp, list) or not exp:
             errors.append(f"{path}: case #{i} expected must be non-empty list")

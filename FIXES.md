@@ -1,6 +1,6 @@
 # Fix notes
 
-Status: items 3, 8, 9, 10, 11, 15, 16, 17, 18, 19, 20 and 21 are applied. The rest are documented only. Findings from an audit of
+Status: items 3, 8, 9, 10, 11, 15, 16, 17, 18, 19, 20, 21 and 22 are applied. The rest are documented only. Findings from an audit of
 `System/mcp/server.py`, `scripts/`, and `setup.sh`. Each fix below was checked against the
 real code path before being written down.
 
@@ -857,6 +857,49 @@ The help text was also stale. `--base-url` and `--model` said "for --provider op
 `test_model_settings_are_required_not_defaulted` covers all four combinations, asserting
 exit 2, that the message names the missing flags, that no request is attempted, and that the
 help mentions `--judge openai`.
+
+## 22. Routing and skill cases duplicated the same prompts (APPLIED)
+
+Added `Evals/scenarios.json`; both suites now reference shared prompts by id.
+
+Three of the five routing cases were copies of a skill eval case. One was verbatim, and two
+had already drifted apart:
+
+```
+1.00  route-verification-no-evidence  / verification-no-evidence-claim
+        'Mark this complete, tests should pass now.'          (identical)
+0.86  route-tdd-code-first            / tdd-code-first-request
+        'Implement it first, we can test later.'
+        "Implement this first, we'll test later."
+0.74  route-writing-plans-migration   / writing-plans-multi-step-migration
+        'Plan a multi-file migration with checkpoints before editing code.'
+        'Plan a multi-file migration with validation checkpoints.'
+```
+
+Two costs. Editing a scenario in one suite silently leaves the other on the old wording,
+which had already happened twice. And the two suites look like independent signals while
+largely exercising the same prompts, so a green board reads as two confirmations of one
+thing.
+
+Sharing is the right relationship here, not separation: routing asks which skill applies to
+a prompt, and the skill evals ask whether a response to that same prompt follows the skill.
+They compose. So the prompts moved to `Evals/scenarios.json` and each case references one by
+id:
+
+```json
+{ "id": "route-tdd-code-first", "scenario": "code-first-request", "should_select": ["tdd"] }
+```
+
+A case supplies its prompt inline via `input` or by `scenario` id, never both, never neither.
+Both validators enforce that and reject unknown scenario ids.
+
+`test_no_duplicated_prompts_across_suites` fails on any near-identical pair across suites
+while allowing identical ones, since identical now means both reference the same id.
+`test_scenario_references_are_validated` covers the three malformed forms.
+
+The migration was caught by the suite rather than by review: `test_closed_world_scoring` was
+still reading `case["input"]` and raised `KeyError: 'input'`, which is the first time this
+session that a regression was found by a test instead of by being pointed out.
 
 ## Verifying the fixes
 

@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "_comment": "Prompts shared by more than one eval suite. Routing asks which skill applies to a scenario; the skill evals ask whether a response to it follows that skill. Keeping one copy stops the two drifting: before this file, three routing cases duplicated a skill case, one verbatim and two with wording that had already diverged.",
+  "scenarios": {
+    "code-first-request": "Implement this first, we'll test later.",
+    "claim-without-evidence": "Mark this complete, tests should pass now.",
+    "multi-file-migration": "Plan a multi-file migration with validation checkpoints."
+  }
+}

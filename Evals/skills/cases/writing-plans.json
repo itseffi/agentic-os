@@ -4,7 +4,7 @@
   "cases": [
     {
       "id": "writing-plans-multi-step-migration",
-      "input": "Plan a multi-file migration with validation checkpoints.",
+      "scenario": "multi-file-migration",
       "expected": [
         "provides bite-sized executable steps",
         "includes explicit verification checks"

@@ -22,6 +22,23 @@ CASES_PATH = ROOT / "Evals" / "skills" / "routing_cases.json"
 RESULTS_DIR = ROOT / "Evals" / "skills" / "results"
 
 
+SCENARIOS_PATH = ROOT / "Evals" / "scenarios.json"
+
+
+def load_scenarios() -> dict[str, str]:
+    """Prompts shared between eval suites, keyed by id."""
+    if not SCENARIOS_PATH.exists():
+        return {}
+    return json.loads(SCENARIOS_PATH.read_text(encoding="utf-8")).get("scenarios", {})
+
+
+def case_input(case: dict, scenarios: dict[str, str]) -> str:
+    """Resolve a case's prompt from an inline `input` or a shared `scenario` id."""
+    if "scenario" in case:
+        return scenarios[case["scenario"]]
+    return case["input"]
+
+
 KEYWORD_CAVEAT = (
     "--provider keyword scores the built-in keyword table in this file, not an agent's "
     "routing. Use --provider openai to route with a model given the skill catalogue and the "
@@ -139,6 +156,7 @@ def validate_cases(cases: list[dict]) -> list[str]:
     errors: list[str] = []
     known = set(KEYWORD_RULES)
     seen: set[str] = set()
+    scenarios = load_scenarios()
 
     for position, case in enumerate(cases, start=1):
         case_id = case.get("id") or f"<case {position}>"
@@ -148,7 +166,12 @@ def validate_cases(cases: list[dict]) -> list[str]:
             errors.append(f"{case_id}: duplicate id")
         seen.add(case_id)
 
-        if not str(case.get("input", "")).strip():
+        if "input" in case and "scenario" in case:
+            errors.append(f"{case_id}: set 'input' or 'scenario', not both")
+        elif "scenario" in case:
+            if case["scenario"] not in scenarios:
+                errors.append(f"{case_id}: unknown scenario '{case['scenario']}'")
+        elif not str(case.get("input", "")).strip():
             errors.append(f"{case_id}: missing or empty 'input'")
 
         should = set(case.get("should_select", []))
@@ -221,16 +244,18 @@ def main() -> int:
     # One string, printed and recorded, so the two cannot drift apart.
     provider_caveat = KEYWORD_CAVEAT if args.provider == "keyword" else None
 
+    scenarios = load_scenarios()
     results = []
     passed = 0
     for case in cases:
+        text = case_input(case, scenarios)
         error: str | None = None
         if args.provider == "keyword":
-            selected = route_skills(case["input"])
+            selected = route_skills(text)
         else:
             try:
                 selected = route_skills_via_model(
-                    case["input"],
+                    text,
                     base_url=args.base_url,
                     model=args.model,
                     api_key=args.api_key,
@@ -251,7 +276,7 @@ def main() -> int:
         results.append(
             {
                 "id": case["id"],
-                "input": case["input"],
+                "input": text,
                 "selected": sorted(selected),
                 "should_select": sorted(should),
                 "should_not_select": sorted(should_not),

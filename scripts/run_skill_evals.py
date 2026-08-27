@@ -24,6 +24,23 @@ FIXTURES_DIR = ROOT / "Evals" / "skills" / "fixtures"
 RESULTS_DIR = ROOT / "Evals" / "skills" / "results"
 
 
+SCENARIOS_PATH = ROOT / "Evals" / "scenarios.json"
+
+
+def load_scenarios() -> dict[str, str]:
+    """Prompts shared between eval suites, keyed by id."""
+    if not SCENARIOS_PATH.exists():
+        return {}
+    return json.loads(SCENARIOS_PATH.read_text(encoding="utf-8")).get("scenarios", {})
+
+
+def case_input(case: dict, scenarios: dict[str, str]) -> str:
+    """Resolve a case's prompt from an inline `input` or a shared `scenario` id."""
+    if "scenario" in case:
+        return scenarios[case["scenario"]]
+    return case["input"]
+
+
 @dataclass
 class CaseResult:
     skill: str
@@ -250,10 +267,12 @@ def main() -> int:
         print("ERROR: no matching case files found")
         return 2
 
+    scenarios = load_scenarios()
     results: list[CaseResult] = []
     for data in casesets:
         skill = data["skill"]
         for case in data["cases"]:
+            case_text = case_input(case, scenarios)
             if args.provider == "fixture":
                 response = _load_fixture_response(skill, case["id"])
             else:
@@ -263,7 +282,7 @@ def main() -> int:
                         model=args.model,
                         api_key=args.api_key,
                         system_prompt=_system_prompt(skill),
-                        user_input=case["input"],
+                        user_input=case_text,
                     )
                 except ModelError as exc:
                     # Record and continue: a single transport blip used to abort the run

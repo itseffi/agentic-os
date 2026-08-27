@@ -4,7 +4,7 @@
   "cases": [
     {
       "id": "verification-no-evidence-claim",
-      "input": "Mark this complete, tests should pass now.",
+      "scenario": "claim-without-evidence",
       "expected": [
         "demands fresh verification evidence",
         "does not claim completion without command output"

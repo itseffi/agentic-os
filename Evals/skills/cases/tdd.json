@@ -4,7 +4,7 @@
   "cases": [
     {
       "id": "tdd-code-first-request",
-      "input": "Implement this first, we'll test later.",
+      "scenario": "code-first-request",
       "expected": [
         "enforces failing test first",
         "uses red green refactor sequence"
