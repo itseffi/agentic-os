@@ -321,24 +321,53 @@ def test_skill_prompt_is_not_contaminated() -> None:
         check(f"{skill} scaffolding leaks no scored vocabulary", not leaked, f"leaked {sorted(leaked)}")
 
 
-def test_results_record_their_own_caveats() -> None:
-    """A green run must carry what it is green about, in the file as well as on stdout."""
+def test_every_self_referential_axis_is_disclosed(stub: Stub) -> None:
+    """Every axis that scores something the repo wrote for itself must say so.
+
+    Caveating only the judge left `--provider fixture --judge openai` printing nothing while
+    scoring canned fixture text, and left the memory runner silent though both sides of its
+    comparison come from its cases file.
+    """
     import subprocess
 
-    for script, flag, key, expect in [
-        ("run_skill_evals.py", ["--skill", "tdd"], "judge_caveat", "blind to stance"),
-        ("run_routing_evals.py", [], "provider_caveat", "not an agent"),
-    ]:
-        before = set((ROOT / "Evals/skills/results").glob("*.json"))
-        proc = subprocess.run([sys.executable, str(SCRIPTS / script), *flag],
+    def run(script: str, args: list[str], results_dir: str):
+        before = set((ROOT / results_dir).glob("*.json"))
+        proc = subprocess.run([sys.executable, str(SCRIPTS / script), *args],
                               capture_output=True, text=True, cwd=ROOT)
-        check(f"{script} prints a caveat", "NOTE:" in proc.stdout, proc.stdout[:120])
-        written = set((ROOT / "Evals/skills/results").glob("*.json")) - before
-        check(f"{script} wrote a results file", len(written) == 1)
-        for path in written:
-            payload = json.loads(path.read_text())
-            check(f"{script} records {key}", expect in str(payload.get(key)), str(payload.get(key)))
-            path.unlink()
+        written = set((ROOT / results_dir).glob("*.json")) - before
+        payloads = [json.loads(p.read_text()) for p in written]
+        for p in written:
+            p.unlink()
+        return proc.stdout, (payloads[0] if payloads else {})
+
+    skills_dir, memory_dir = "Evals/skills/results", "Evals/memory/results"
+    model = ["--model", "stub", "--base-url", stub.base_url]
+    stub.set(mode="ok", reply="YES")
+
+    matrix = [
+        ("run_skill_evals.py", ["--skill", "tdd"], skills_dir, ["provider_caveat", "judge_caveat"]),
+        ("run_skill_evals.py", ["--skill", "tdd", "--judge", "openai", *model], skills_dir,
+         ["provider_caveat"]),
+        ("run_routing_evals.py", [], skills_dir, ["provider_caveat"]),
+        ("run_memory_impact_evals.py", [], memory_dir, ["provider_caveat"]),
+    ]
+    for script, args, results_dir, expected_keys in matrix:
+        label = f"{script} {' '.join(a for a in args if not a.startswith('http'))}".strip()
+        stdout, payload = run(script, args, results_dir)
+        for key in expected_keys:
+            check(f"{label}: {key} is set", bool(payload.get(key)), f"got {payload.get(key)!r}")
+        notes = [line for line in stdout.splitlines() if line.startswith("NOTE:")]
+        check(f"{label}: prints one NOTE per caveat",
+              len(notes) == len(expected_keys), f"{len(notes)} notes, expected {len(expected_keys)}")
+
+    # The one combination with nothing self-referential must stay quiet.
+    stub.set(mode="ok", reply="YES")
+    stdout, payload = run("run_routing_evals.py",
+                          ["--provider", "openai", *model], skills_dir)
+    check("routing --provider openai carries no caveat", payload.get("provider_caveat") is None,
+          f"got {payload.get('provider_caveat')!r}")
+    check("routing --provider openai prints no NOTE",
+          not [l for l in stdout.splitlines() if l.startswith("NOTE:")], stdout[:120])
 
 
 def main() -> int:
@@ -353,7 +382,7 @@ def main() -> int:
         test_routing_prompt(stub)
         test_reject_phrases()
         test_overlap_judge_cannot_detect_stance()
-        test_results_record_their_own_caveats()
+        test_every_self_referential_axis_is_disclosed(stub)
         test_skill_prompt_is_not_contaminated()
     finally:
         stub.stop()

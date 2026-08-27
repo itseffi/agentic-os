@@ -14,6 +14,13 @@ ROOT = Path(__file__).resolve().parents[1]
 CASES_PATH = ROOT / "Evals" / "memory" / "cases.json"
 RESULTS_DIR = ROOT / "Evals" / "memory" / "results"
 
+# Both sides of the A/B are read from the cases file, so this runner compares two strings the
+# repo wrote for itself. It has no provider option at all; nothing here is generated.
+CAVEAT = (
+    "both sides of the comparison are read from Evals/memory/cases.json; nothing is "
+    "generated, so this measures the cases file, not memory search."
+)
+
 
 def _tokens(text: str) -> set[str]:
     return set(re.findall(r"[a-z0-9]+", text.lower()))
@@ -81,6 +88,8 @@ def main() -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "timestamp_utc": ts,
+        "provider": "fixture",
+        "provider_caveat": CAVEAT,
         "summary": {
             "total_cases": total,
             "passed_cases": passed,
@@ -91,6 +100,7 @@ def main() -> int:
     }
     out.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
 
+    print(f"NOTE: {CAVEAT}")
     print(f"PASS RATE: {passed}/{total} = {pass_rate:.3f}")
     print(f"RESULTS: {out.relative_to(ROOT)}")
     for r in results:

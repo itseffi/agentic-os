@@ -218,6 +218,21 @@ def main() -> int:
         print("ERROR: --model is required when --judge openai")
         return 2
 
+    # Both axes can be self-referential and each is disclosed independently. Caveating only
+    # the judge left --provider fixture --judge openai printing nothing at all, while every
+    # response being scored was text this repo had written for itself.
+    provider_caveat = (
+        "--provider fixture scores canned responses from Evals/skills/fixtures, which this "
+        "repo wrote for itself; it measures nothing about a model."
+        if args.provider == "fixture" else None
+    )
+    judge_caveat = (
+        "--judge overlap compares token sets and cannot detect stance. A response arguing "
+        "against a skill in the skill's own vocabulary scores as well as one following it. "
+        "Use --judge openai for a verdict on the claim."
+        if args.judge == "overlap" else None
+    )
+
     judge = None
     if args.judge == "openai":
         judge = {"base_url": args.base_url, "model": args.model, "api_key": args.api_key}
@@ -282,10 +297,9 @@ def main() -> int:
     payload = {
         "timestamp_utc": timestamp,
         "provider": args.provider,
+        "provider_caveat": provider_caveat,
         "judge": args.judge,
-        "judge_caveat": (
-            "token-set overlap; blind to stance and negation" if args.judge == "overlap" else None
-        ),
+        "judge_caveat": judge_caveat,
         "threshold": args.threshold,
         "min_pass_rate": args.min_pass_rate,
         "summary": {
@@ -308,10 +322,8 @@ def main() -> int:
     }
     out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
 
-    if args.judge == "overlap":
-        print("NOTE: --judge overlap compares token sets and cannot detect stance. A response "
-              "arguing against a skill in the skill's own vocabulary scores as well as one "
-              "following it. Use --judge openai for a verdict on the claim.")
+    for note in (n for n in (provider_caveat, judge_caveat) if n):
+        print(f"NOTE: {note}")
     print(f"PASS RATE: {passed}/{total} = {pass_rate:.3f}")
     print(f"RESULTS: {out_path.relative_to(ROOT)}")
     for r in results:

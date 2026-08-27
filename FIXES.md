@@ -727,17 +727,29 @@ known gap, so it is visible rather than implied, and tells whoever closes it to 
 section. Only `--judge openai` evaluates the claim, and it is verified against a stub, not a
 real model.
 
-Both runners now say what a green run is green about, on stdout and in the results file, so
-a pass rate cannot be quoted as evidence of correctness on its own:
+All three runners now say what a green run is green about, on stdout and in the results file,
+so a pass rate cannot be quoted as evidence of correctness on its own.
 
-```
-skill evals  judge: overlap    judge_caveat:    token-set overlap; blind to stance and negation
-routing      provider: keyword provider_caveat: built-in keyword table, not an agent; measures
-                                                the table, not skill routing
-```
+A first attempt at this was itself asymmetric and had to be redone. The skill runner has two
+independent axes, `--provider` for where responses come from and `--judge` for how they are
+scored, and only the judge was disclosed. So `--provider fixture --judge openai` printed
+nothing at all and recorded `judge_caveat: None`, while every response it scored was canned
+text from `Evals/skills/fixtures`. The memory runner, the most self-referential of the three,
+had no `provider` field and no caveat of any kind.
 
-`test_results_record_their_own_caveats` runs both scripts and asserts the NOTE appears on
-stdout and the caveat key is present in the written file, so neither can quietly disappear.
+Each self-referential axis is now disclosed independently:
+
+| run | caveats emitted |
+|-----|-----------------|
+| skill evals, fixture + overlap | `provider_caveat`, `judge_caveat` |
+| skill evals, fixture + openai judge | `provider_caveat` |
+| routing, keyword | `provider_caveat` |
+| memory impact | `provider_caveat` (no provider option exists) |
+| routing, openai | none, and no NOTE |
+
+`test_every_self_referential_axis_is_disclosed` runs that whole matrix, asserting one NOTE
+per caveat and the matching key in the written file, and that the one genuinely non-canned
+combination stays silent.
 
 ## 19. The repository had no tests at all (APPLIED)
 
