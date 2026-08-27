@@ -52,12 +52,29 @@ Two reasons the overwrite is not defensible as replace-by-title:
 
 ## The fix
 
-Guard the write in `create_task`, before the `try` block at `System/mcp/server.py:588`:
+Change the write mode at `System/mcp/server.py:589` from `'w'` to `'x'`:
 
 ```python
-filename = to_slug_filename(title)
-filepath = TASKS_DIR / filename
+with open(filepath, 'x') as f:
+```
 
+That is the whole fix. `'x'` refuses to open a file that already exists, raising
+`FileExistsError`, which the `except Exception` at `System/mcp/server.py:597` already
+catches and turns into `success: False`. The existing file is left untouched:
+
+```
+'x' alone -> {'success': False, 'error': "[Errno 17] File exists: '/tmp/.../t.md'"}
+file preserved: True
+```
+
+No separate existence check is needed for correctness.
+
+### Optional: a better error message
+
+`'x'` returns a raw errno string. If the caller deserves something clearer, add an
+explicit check after `filepath` is built at `System/mcp/server.py:571`:
+
+```python
 if filepath.exists():
     result = {
         "success": False,
@@ -68,13 +85,13 @@ if filepath.exists():
     return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 ```
 
-Change the write mode to `'x'` as well, so a race between the check and the write fails
-loudly instead of silently clobbering. `FileExistsError` is already caught by the existing
-`except Exception` and returns `success: False`.
+This is a message improvement, not a second layer of protection. Keep `'x'` regardless,
+since it is what actually prevents the overwrite.
 
-```python
-with open(filepath, 'x') as f:
-```
+The check does not guard a race. Everything between the check and the write is
+synchronous with no `await`, so no other coroutine in this single-threaded stdio server
+can interleave. Only a second process writing the same path could, which `'x'` handles on
+its own.
 
 ## Second call site
 
