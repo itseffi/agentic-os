@@ -1,6 +1,6 @@
 # Fix notes
 
-Status: items 3, 8, 9 and 10 are applied. The rest are documented only. Findings from an audit of
+Status: items 3, 8, 9, 10 and 11 are applied. The rest are documented only. Findings from an audit of
 `System/mcp/server.py`, `scripts/`, and `setup.sh`. Each fix below was checked against the
 real code path before being written down.
 
@@ -336,9 +336,9 @@ exit=0 (TERM unset)
 The questions at `setup.sh:157-203` still run in every case, which is correct once the
 existing file is backed up rather than discarded.
 
-Open point: the backups are untracked files holding personal goals, in a repository whose
-`.gitignore` is explicitly privacy-first. Adding `GOALS.md.backup-*` to `.gitignore` would
-match that intent, but it was left out as it goes beyond the fix.
+The backups hold personal goals, so `GOALS.md.backup-*` is now in `.gitignore:23`,
+matching the privacy-first intent of the rest of that file. Confirmed with
+`git check-ignore`: a backup file does not appear as untracked.
 
 ## 9. setup.sh reports .gitignore preserved when it does not exist (APPLIED)
 
@@ -381,17 +381,26 @@ Fixed by:
 clear 2>/dev/null || true
 ```
 
-## 11. Eval runners write results without creating the directory
+## 11. Eval runners write results without creating the directory (APPLIED)
 
-`scripts/run_routing_evals.py:85` and `scripts/run_memory_impact_evals.py:91` call
-`write_text` on a path whose parent may not exist. `scripts/run_skill_evals.py:199` gets
-this right. Both currently work only because the results directories are committed.
-
-Fix, in both files before the write:
+Fixed in `scripts/run_routing_evals.py:75` and `scripts/run_memory_impact_evals.py:81`.
+Both called `write_text` on a path whose parent might not exist, and worked only because
+the results directories happen to be committed. `scripts/run_skill_evals.py:199` already
+did this correctly.
 
 ```python
 out.parent.mkdir(parents=True, exist_ok=True)
 ```
+
+Confirmed the failure was real, not theoretical. Pre-fix, with the results directory
+removed:
+
+```
+FileNotFoundError: [Errno 2] No such file or directory:
+  '.../Evals/skills/results/20260827T145822Z-routing.json'
+```
+
+Post-fix, both runners recreate the directory and complete normally.
 
 ## 12. The documented MCP run command targets the wrong workspace
 

@@ -72,6 +72,7 @@ def main() -> int:
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out = RESULTS_DIR / f"{ts}-routing.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "timestamp_utc": ts,
         "summary": {

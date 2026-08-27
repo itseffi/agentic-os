@@ -19,6 +19,9 @@ Resources/**/*.md
 # Backlog - your inbox is private
 BACKLOG.md
 
+# Goals backups - setup.sh copies your previous GOALS.md before regenerating
+GOALS.md.backup-*
+
 # Claude Code local settings
 .claude/
 
