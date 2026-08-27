@@ -172,8 +172,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--base-url",
-        default=os.environ.get("OPENAI_BASE_URL", "http://localhost:8080/v1"),
-        help="OpenAI-compatible base URL for --provider openai.",
+        default=os.environ.get("OPENAI_BASE_URL", ""),
+        help="OpenAI-compatible base URL, or set OPENAI_BASE_URL. Required by --provider openai.",
     )
     parser.add_argument(
         "--model",
@@ -187,9 +187,16 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    if args.provider == "openai" and not args.model:
-        print("ERROR: --model is required when --provider openai")
-        return 2
+    if args.provider == "openai":
+        # Validate both together. A silently defaulted base URL turned a misconfiguration
+        # into five identical connection failures and a 0/5 pass rate that reads like the
+        # router was wrong, while a missing --model said so plainly and exited.
+        missing = [flag for flag, value in (("--model", args.model), ("--base-url", args.base_url))
+                   if not value]
+        if missing:
+            print(f"ERROR: {' and '.join(missing)} required when --provider openai "
+                  "(or set OPENAI_MODEL / OPENAI_BASE_URL)")
+            return 2
 
     data = json.loads(CASES_PATH.read_text(encoding="utf-8"))
     cases = data.get("cases", [])

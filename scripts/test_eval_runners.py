@@ -370,6 +370,46 @@ def test_every_self_referential_axis_is_disclosed(stub: Stub) -> None:
           not [l for l in stdout.splitlines() if l.startswith("NOTE:")], stdout[:120])
 
 
+def test_model_settings_are_required_not_defaulted() -> None:
+    """Missing model settings must fail fast, not silently target a dead localhost.
+
+    --model was validated and --base-url was not, so a misconfigured run produced a red eval
+    full of connection errors instead of one line saying what was missing.
+    """
+    import subprocess
+
+    def run(script: str, args: list[str]) -> tuple[int, str]:
+        proc = subprocess.run([sys.executable, str(SCRIPTS / script), *args],
+                              capture_output=True, text=True, cwd=ROOT,
+                              env={"PATH": "/usr/bin:/bin"})
+        return proc.returncode, proc.stdout + proc.stderr
+
+    for script, args, expect in [
+        ("run_routing_evals.py", ["--provider", "openai"], ["--model", "--base-url"]),
+        ("run_routing_evals.py", ["--provider", "openai", "--model", "m"], ["--base-url"]),
+        ("run_skill_evals.py", ["--judge", "openai"], ["--model", "--base-url"]),
+        ("run_skill_evals.py", ["--provider", "openai", "--model", "m"], ["--base-url"]),
+    ]:
+        code, out = run(script, args)
+        label = f"{script} {' '.join(args)}"
+        check(f"{label}: exits 2", code == 2, f"exit {code}: {out[:120]}")
+        for flag in expect:
+            check(f"{label}: names {flag}", flag in out, out[:160])
+        check(f"{label}: does not attempt a request", "Connection refused" not in out, out[:160])
+
+    # The help must not claim these are only for --provider, since --judge needs them too.
+    # Match inside the options block, not the wrapped usage line at the top, and collapse
+    # argparse's line wrapping before looking for the phrase.
+    _, help_text = run("run_skill_evals.py", ["--help"])
+    options = help_text.split("options:", 1)[-1]
+    entries = re.split(r"\n(?=\s{2}-)", options)
+    for flag in ["--base-url", "--model"]:
+        entry = next((e for e in entries if e.strip().startswith(flag)), "")
+        collapsed = " ".join(entry.split())
+        check(f"help for {flag} mentions --judge openai", "--judge openai" in collapsed,
+              collapsed[:140] or "entry not found")
+
+
 def main() -> int:
     stub = Stub()
     try:
@@ -383,6 +423,7 @@ def main() -> int:
         test_reject_phrases()
         test_overlap_judge_cannot_detect_stance()
         test_every_self_referential_axis_is_disclosed(stub)
+        test_model_settings_are_required_not_defaulted()
         test_skill_prompt_is_not_contaminated()
     finally:
         stub.stop()

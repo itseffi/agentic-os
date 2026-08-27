@@ -1,6 +1,6 @@
 # Fix notes
 
-Status: items 3, 8, 9, 10, 11, 15, 16, 17, 18, 19 and 20 are applied. The rest are documented only. Findings from an audit of
+Status: items 3, 8, 9, 10, 11, 15, 16, 17, 18, 19, 20 and 21 are applied. The rest are documented only. Findings from an audit of
 `System/mcp/server.py`, `scripts/`, and `setup.sh`. Each fix below was checked against the
 real code path before being written down.
 
@@ -814,6 +814,37 @@ api_key=''        sends None
 api_key='none'    sends None
 api_key='sk-real' sends 'Bearer sk-real'
 ```
+
+## 21. --base-url silently defaulted while --model was required (APPLIED)
+
+Fixed in both runners' argument parsers and their validation.
+
+`--model` was checked and exited 2 with a clear message. `--base-url` was not: it defaulted
+to `http://localhost:8080/v1`, so the same class of misconfiguration produced a red eval
+instead of an error message:
+
+```
+PASS RATE: 0/5 = 0.000
+- [FAIL] route-verification-no-evidence -> selected=(none)  (could not reach http://localhost:8080/v1: [Errno 111] Connection refused)
+- [FAIL] route-tdd-code-first -> selected=(none)  (could not reach http://localhost:8080/v1: [Errno 111] Connection refused)
+```
+
+A 0/5 that reads like the router is broken, when nothing was configured. Both settings are
+now validated together before any request:
+
+```
+$ run_routing_evals.py --provider openai
+ERROR: --model and --base-url required when --provider openai (or set OPENAI_MODEL / OPENAI_BASE_URL)
+$ run_skill_evals.py --judge openai
+ERROR: --model and --base-url required by --judge openai (or set OPENAI_MODEL / OPENAI_BASE_URL)
+```
+
+The help text was also stale. `--base-url` and `--model` said "for --provider openai", but
+`--judge openai` needs both, a check added in item 18 without updating the strings beside it.
+
+`test_model_settings_are_required_not_defaulted` covers all four combinations, asserting
+exit 2, that the message names the missing flags, that no request is attempted, and that the
+help mentions `--judge openai`.
 
 ## Verifying the fixes
 

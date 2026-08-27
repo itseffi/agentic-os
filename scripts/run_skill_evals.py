@@ -196,13 +196,15 @@ def main() -> int:
     )
     parser.add_argument(
         "--base-url",
-        default=os.environ.get("OPENAI_BASE_URL", "http://localhost:8080/v1"),
-        help="OpenAI-compatible base URL for --provider openai.",
+        default=os.environ.get("OPENAI_BASE_URL", ""),
+        help="OpenAI-compatible base URL, or set OPENAI_BASE_URL. "
+             "Required by --provider openai and by --judge openai.",
     )
     parser.add_argument(
         "--model",
         default=os.environ.get("OPENAI_MODEL", ""),
-        help="Model id for --provider openai.",
+        help="Model id, or set OPENAI_MODEL. "
+             "Required by --provider openai and by --judge openai.",
     )
     parser.add_argument(
         "--api-key",
@@ -211,12 +213,18 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    if args.provider == "openai" and not args.model:
-        print("ERROR: --model is required when --provider openai")
-        return 2
-    if args.judge == "openai" and not args.model:
-        print("ERROR: --model is required when --judge openai")
-        return 2
+    # Both --provider openai and --judge openai reach a model, and both need the same two
+    # settings. Validate once, naming whichever flags are actually missing.
+    needs_model = [name for name, value in
+                   (("--provider openai", args.provider == "openai"),
+                    ("--judge openai", args.judge == "openai")) if value]
+    if needs_model:
+        missing = [flag for flag, value in (("--model", args.model), ("--base-url", args.base_url))
+                   if not value]
+        if missing:
+            print(f"ERROR: {' and '.join(missing)} required by {' and '.join(needs_model)} "
+                  "(or set OPENAI_MODEL / OPENAI_BASE_URL)")
+            return 2
 
     # Both axes can be self-referential and each is disclosed independently. Caveating only
     # the judge left --provider fixture --judge openai printing nothing at all, while every
