@@ -482,10 +482,23 @@ The scorer could not catch that, because it only checked `should_select` and
 router returning every skill a case does not explicitly forbid scored 5/5, the same as the
 correct router.
 
-Both fixed. Matching is now on word boundaries:
+Both fixed. Matching is now anchored, via `_boundary_pattern` at
+`scripts/run_routing_evals.py:28-35`:
 
 ```python
-if any(re.search(rf"\b{re.escape(p)}\b", low) for p in patterns):
+return r"(?<!\w)" + re.escape(keyword.lower()) + r"(?!\w)"
+```
+
+Two details that a plain `\b{re.escape(p)}\b` got wrong. `text.lower()` normalised only
+one side of the comparison, so a rule written as `Red Green` would never match anything and
+never say so. And `\b` cannot anchor a keyword whose first or last character is not a word
+character, so `c++` or `-v` would never match either. Lowercasing the keyword and using
+lookarounds fixes both:
+
+```
+pattern '+1'   \b matches=False   fixed matches=True
+pattern 'c++'  \b matches=False   fixed matches=True
+'Try Red Green refactor'  \b version=(wrong skill)  fixed=(correct skill)
 ```
 
 and `should_select` is treated as the complete expected answer:

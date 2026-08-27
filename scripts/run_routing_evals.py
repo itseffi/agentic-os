@@ -24,13 +24,23 @@ KEYWORD_RULES: dict[str, tuple[str, ...]] = {
 }
 
 
+def _boundary_pattern(keyword: str) -> str:
+    """Anchor a keyword so it does not fire inside a longer word.
+
+    Lowercases the keyword as well as the text: normalising only one side means a rule
+    written as 'Red Green' would silently never match. Uses lookarounds rather than \\b so
+    keywords that start or end with a non-word character ('c++', '-v') still match.
+    """
+    return r"(?<!\w)" + re.escape(keyword.lower()) + r"(?!\w)"
+
+
 def route_skills(text: str) -> set[str]:
-    # Match on word boundaries: bare substrings fire on 'plan' inside 'explanation',
-    # 'complete' inside 'incomplete', 'done' inside 'abandoned', 'steps' inside 'footsteps'.
+    # Anchored matching: bare substrings fire on 'plan' inside 'explanation', 'complete'
+    # inside 'incomplete', 'done' inside 'abandoned', 'steps' inside 'footsteps'.
     low = text.lower()
     selected: set[str] = set()
     for skill, patterns in KEYWORD_RULES.items():
-        if any(re.search(rf"\b{re.escape(p)}\b", low) for p in patterns):
+        if any(re.search(_boundary_pattern(p), low) for p in patterns):
             selected.add(skill)
     return selected
 
