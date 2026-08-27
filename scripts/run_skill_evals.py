@@ -15,7 +15,8 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from model_client import ModelError, query_chat  # noqa: E402  (needs sys.path above)
+from eval_io import case_input, load_scenarios, unique_results_path  # noqa: E402
+from model_client import ModelError, query_chat  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILLS_DIR = ROOT / ".agents" / "skills"
@@ -24,21 +25,6 @@ FIXTURES_DIR = ROOT / "Evals" / "skills" / "fixtures"
 RESULTS_DIR = ROOT / "Evals" / "skills" / "results"
 
 
-SCENARIOS_PATH = ROOT / "Evals" / "scenarios.json"
-
-
-def load_scenarios() -> dict[str, str]:
-    """Prompts shared between eval suites, keyed by id."""
-    if not SCENARIOS_PATH.exists():
-        return {}
-    return json.loads(SCENARIOS_PATH.read_text(encoding="utf-8")).get("scenarios", {})
-
-
-def case_input(case: dict, scenarios: dict[str, str]) -> str:
-    """Resolve a case's prompt from an inline `input` or a shared `scenario` id."""
-    if "scenario" in case:
-        return scenarios[case["scenario"]]
-    return case["input"]
 
 
 @dataclass
@@ -321,8 +307,7 @@ def main() -> int:
     pass_rate = passed / total if total else 0.0
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    out_path = RESULTS_DIR / f"{timestamp}-{args.provider}.json"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path = unique_results_path(RESULTS_DIR, f"{timestamp}-{args.provider}")
     payload = {
         "timestamp_utc": timestamp,
         "provider": args.provider,

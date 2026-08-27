@@ -6,8 +6,13 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from eval_io import unique_results_path  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -131,8 +136,7 @@ def main() -> int:
     pass_rate = passed / total if total else 0.0
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    out = RESULTS_DIR / f"{ts}-memory-impact.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
+    out = unique_results_path(RESULTS_DIR, f"{ts}-memory-impact")
     payload = {
         "timestamp_utc": ts,
         "provider": "fixture",

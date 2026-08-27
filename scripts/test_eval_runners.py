@@ -333,14 +333,19 @@ def test_every_self_referential_axis_is_disclosed(stub: Stub) -> None:
     import subprocess
 
     def run(script: str, args: list[str], results_dir: str):
-        before = set((ROOT / results_dir).glob("*.json"))
+        # Read the path the runner prints rather than diffing a glob. The glob silently
+        # yielded nothing when a run in the same second reused a filename, turning a real
+        # collision into a KeyError three lines later instead of a clear failure.
         proc = subprocess.run([sys.executable, str(SCRIPTS / script), *args],
                               capture_output=True, text=True, cwd=ROOT)
-        written = set((ROOT / results_dir).glob("*.json")) - before
-        payloads = [json.loads(p.read_text()) for p in written]
-        for p in written:
-            p.unlink()
-        return proc.stdout, (payloads[0] if payloads else {})
+        line = next((l for l in proc.stdout.splitlines() if l.startswith("RESULTS:")), None)
+        if line is None:
+            check(f"{script}: printed a RESULTS path", False, proc.stdout[:160])
+            return proc.stdout, {}
+        path = ROOT / line.split("RESULTS:", 1)[1].strip()
+        payload = json.loads(path.read_text())
+        path.unlink()
+        return proc.stdout, payload
 
     skills_dir, memory_dir = "Evals/skills/results", "Evals/memory/results"
     model = ["--model", "stub", "--base-url", stub.base_url]
@@ -521,6 +526,27 @@ def test_no_vacuous_passes() -> None:
               (ROOT / "Evals/memory/cases.json").read_text())["cases"]) == [])
 
 
+def test_results_paths_do_not_collide() -> None:
+    """Two runs in the same second must not overwrite each other."""
+    import subprocess
+
+    written = []
+    for _ in range(3):
+        proc = subprocess.run([sys.executable, str(SCRIPTS / "run_routing_evals.py")],
+                              capture_output=True, text=True, cwd=ROOT)
+        line = next((l for l in proc.stdout.splitlines() if l.startswith("RESULTS:")), "")
+        written.append(line.split("RESULTS:", 1)[1].strip() if line else None)
+
+    check("three rapid runs report three paths", all(written), str(written))
+    check("three rapid runs do not share a path", len(set(written)) == 3, str(written))
+    for rel in written:
+        if rel:
+            path = ROOT / rel
+            check(f"{rel} exists on disk", path.exists())
+            if path.exists():
+                path.unlink()
+
+
 def main() -> int:
     stub = Stub()
     try:
@@ -539,6 +565,7 @@ def main() -> int:
         test_scenario_references_are_validated()
         test_scoring_per_runner()
         test_no_vacuous_passes()
+        test_results_paths_do_not_collide()
         test_skill_prompt_is_not_contaminated()
     finally:
         stub.stop()

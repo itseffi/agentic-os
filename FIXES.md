@@ -1,6 +1,6 @@
 # Fix notes
 
-Status: items 3, 8, 9, 10, 11, 15, 16, 17, 18, 19, 20, 21, 22 and 23 are applied. The rest are documented only. Findings from an audit of
+Status: items 3, 8, 9, 10, 11, 15, 16, 17, 18, 19, 20, 21, 22, 23 and 24 are applied. The rest are documented only. Findings from an audit of
 `System/mcp/server.py`, `scripts/`, and `setup.sh`. Each fix below was checked against the
 real code path before being written down.
 
@@ -952,6 +952,47 @@ exit=2
 covers the rejections. Order-blindness in the skill metric is left as-is and stays pinned by
 `test_overlap_judge_cannot_detect_stance`; it is inherent to token overlap, which is why
 `--judge openai` exists.
+
+## 24. Result files silently overwrote each other, and two helpers were copy-pasted (APPLIED)
+
+Added `scripts/eval_io.py`; all three runners now use it.
+
+Result filenames are stamped to the second, `{timestamp}-{provider}.json`, so two runs
+inside the same second resolved to the same path and the second destroyed the first. Noted
+in the original audit as minor and never fixed, more than twenty commits ago.
+
+It surfaced as a confusing failure rather than as lost data. Running a runner and then the
+test suite within the same second produced:
+
+```
+File "scripts/test_eval_runners.py", line 366, in <setcomp>
+    recorded = {" ".join(str(payload[k]).split()) for k in expected_keys}
+KeyError: 'provider_caveat'
+```
+
+Nothing to do with the collision on its face. The disclosure test identified the file it had
+just written by diffing a glob of the results directory; when the runner overwrote an
+existing path instead of creating one, the diff was empty, `payload` was `{}`, and the
+KeyError landed three lines later. A real bug reported as an unrelated crash.
+
+Two fixes. `unique_results_path` appends `-2`, `-3` and so on rather than overwriting:
+
+```
+RESULTS: Evals/skills/results/20260827T154336Z-routing.json
+RESULTS: Evals/skills/results/20260827T154336Z-routing-2.json
+RESULTS: Evals/skills/results/20260827T154336Z-routing-3.json
+```
+
+And the test now reads the path the runner prints instead of inferring it, so a collision
+could not be misreported again.
+
+The same commit removes duplication introduced by item 22's own fix: `load_scenarios` and
+`case_input` had been copy-pasted into both runners, which is exactly the pattern item 22
+had just eliminated from the case files. Both now import from `eval_io`, along with the
+memory runner.
+
+`test_results_paths_do_not_collide` runs the routing eval three times in immediate
+succession and asserts three distinct paths, all present on disk.
 
 ## Verifying the fixes
 
