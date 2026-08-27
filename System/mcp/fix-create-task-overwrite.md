@@ -78,13 +78,18 @@ But that handler flattens every failure into the same shape, so an expected outc
 real I/O fault become indistinguishable:
 
 ```
-already exists : {"success": false, "error": "[Errno 17] File exists: '/abs/.../already.md'"}
-bad path       : {"success": false, "error": "[Errno 2] No such file or directory: '/abs/...'"}
+already exists (expected)  {"success": false, "error": "[Errno 17] File exists: '/abs/.../already.md'"}
+missing parent (fault)     {"success": false, "error": "[Errno 2] No such file or directory: '/abs/...'"}
+target is a dir (fault)    {"success": false, "error": "[Errno 17] File exists: '/abs/.../adir.md'"}
 ```
 
-An agent consuming this cannot tell "the task is already there, move on" from "the write
-failed, retry or escalate" without string-matching errno text. It also leaks the absolute
-filesystem path into the response.
+Same keys, same `success` value, differing only inside a free-text `error` string. An agent
+consuming this cannot tell "the task is already there, move on" from "the write failed,
+retry or escalate".
+
+Matching on the errno does not rescue it. A directory sitting at the target path raises
+errno 17 with the byte-identical `File exists` message, so `[Errno 17]` does not mean "a
+task file is already there". The response also leaks the absolute filesystem path.
 
 Keep `'x'` as a backstop against a second process writing the same path, but it is not
 load-bearing. The explicit check is the fix.
