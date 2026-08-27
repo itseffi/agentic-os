@@ -222,7 +222,9 @@ def main() -> int:
 
     case_errors = validate_cases(cases)
     if case_errors:
-        print(f"ERROR: {len(case_errors)} invalid routing case(s) in {CASES_PATH.relative_to(ROOT)}")
+        # Absolute on errors: a repo-relative path is unattributable when the script runs
+        # from a copy, and reads as though the checked-in file were the broken one.
+        print(f"ERROR: {len(case_errors)} invalid routing case(s) in {CASES_PATH}")
         for err in case_errors:
             print(f"- {err}")
         return 2

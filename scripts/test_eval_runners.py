@@ -547,6 +547,44 @@ def test_results_paths_do_not_collide() -> None:
                 path.unlink()
 
 
+def test_error_messages_name_an_absolute_path() -> None:
+    """A validation error must say which file it read, unambiguously.
+
+    A repo-relative path is unattributable when the runner executes from a copy: a synthetic
+    bad file under /tmp reported `Evals/memory/cases.json`, which reads as though the
+    checked-in file were broken.
+    """
+    import subprocess
+    import tempfile
+
+    for script, rel, payload in [
+        ("run_memory_impact_evals.py", "Evals/memory/cases.json",
+         {"version": 1, "cases": [{"id": "vacuous", "input": "x", "baseline_response": "b",
+                                   "memory_search_response": "w",
+                                   "expected_when_enabled": [],
+                                   "expected_missing_in_baseline": []}]}),
+        ("run_routing_evals.py", "Evals/skills/routing_cases.json",
+         {"version": 1, "cases": [{"id": "c", "input": "x", "should_select": ["tdd"],
+                                   "should_not_select": ["tdd"]}]}),
+    ]:
+        sandbox = Path(tempfile.mkdtemp())
+        (sandbox / "scripts").mkdir()
+        for helper in (script, "eval_io.py", "model_client.py"):
+            (sandbox / "scripts" / helper).write_text((SCRIPTS / helper).read_text())
+        target = sandbox / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(payload))
+
+        proc = subprocess.run([sys.executable, str(sandbox / "scripts" / script)],
+                              capture_output=True, text=True, cwd=ROOT)
+        check(f"{script}: sandboxed bad file exits 2", proc.returncode == 2,
+              f"exit {proc.returncode}: {proc.stdout[:120]}")
+        check(f"{script}: error names the sandbox path", str(sandbox) in proc.stdout,
+              proc.stdout[:200])
+        check(f"{script}: error does not read as the repo's file",
+              str(ROOT / rel) not in proc.stdout, proc.stdout[:200])
+
+
 def main() -> int:
     stub = Stub()
     try:
@@ -566,6 +604,7 @@ def main() -> int:
         test_scoring_per_runner()
         test_no_vacuous_passes()
         test_results_paths_do_not_collide()
+        test_error_messages_name_an_absolute_path()
         test_skill_prompt_is_not_contaminated()
     finally:
         stub.stop()

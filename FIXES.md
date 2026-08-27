@@ -1,6 +1,6 @@
 # Fix notes
 
-Status: items 3, 8, 9, 10, 11, 15, 16, 17, 18, 19, 20, 21, 22, 23 and 24 are applied. The rest are documented only. Findings from an audit of
+Status: items 3, 8, 9, 10, 11, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24 and 25 are applied. The rest are documented only. Findings from an audit of
 `System/mcp/server.py`, `scripts/`, and `setup.sh`. Each fix below was checked against the
 real code path before being written down.
 
@@ -993,6 +993,38 @@ memory runner.
 
 `test_results_paths_do_not_collide` runs the routing eval three times in immediate
 succession and asserts three distinct paths, all present on disk.
+
+## 25. Validation errors named a repo-relative path from any tree (APPLIED)
+
+Both runners printed `CASES_PATH.relative_to(ROOT)` on a validation failure, and `ROOT` comes
+from `__file__`. Run a copy of the script against a bad file anywhere on disk and it still
+reported a repo path:
+
+```
+ERROR: 1 invalid case(s) in Evals/memory/cases.json
+```
+
+That output is indistinguishable from the checked-in file being broken, and it caused exactly
+that false alarm: the demonstration in item 23 was a synthetic file in a scratch directory,
+but the message read as though `Evals/memory/cases.json` in this repository had failed. It
+had not, and does not:
+
+```
+cases: 3
+validation errors: none
+PASS RATE: 3/3 = 1.000
+```
+
+Errors now name the absolute path, which is what `validate_skill_eval_cases.py` already did:
+
+```
+ERROR: 1 invalid case(s) in /tmp/.../scratchpad/mem2/Evals/memory/cases.json
+```
+
+Routine success output keeps the relative form, which is friendlier and unambiguous in
+context. `test_error_messages_name_an_absolute_path` builds a sandboxed copy of each runner
+with a deliberately bad case file and asserts the error names the sandbox and not this
+repository.
 
 ## Verifying the fixes
 
