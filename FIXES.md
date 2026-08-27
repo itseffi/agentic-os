@@ -1,6 +1,6 @@
 # Fix notes
 
-Status: items 3, 8, 9, 10, 11, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25 and 26 are applied. The rest are documented only. Findings from an audit of
+Status: items 3, 8, 9, 10, 11, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26 and 27 are applied. The rest are documented only. Findings from an audit of
 `System/mcp/server.py`, `scripts/`, and `setup.sh`. Each fix below was checked against the
 real code path before being written down.
 
@@ -1059,6 +1059,36 @@ it. Loading is now tracked with its own flag.
 `test_skill_case_validator_parity` builds a sandbox per scenario and covers duplicate ids,
 filename mismatch, unknown skill pack, missing fixture response, and that a well-formed file
 still passes.
+
+## 27. Empty values were treated as absent in three places (APPLIED)
+
+The truthiness guard fixed in item 26 was not a one-off. Auditing every
+`if <collection>:` used to mean "was this provided" turned up two more, one of them in the
+same function.
+
+`validate_skill_eval_cases.py` read `if declared and ...` for the `skill` field, so
+`"skill": ""` skipped the filename check, the pack check and the whole fixture block, leaving
+`fixture_loaded` false and the per-case fixture check disabled too. A file declaring an empty
+skill validated clean and then failed at run time looking for `.agents/skills//SKILL.md`:
+
+```
+before: PASS: checked 1 behavioral eval case file(s) (exit 0)
+after : FAIL: .../cases/tdd.json: 'skill' must be a non-empty string (exit 1)
+```
+
+`run_skill_evals.py` read `if skill_filter and ...`, so `--skill ""` was indistinguishable
+from no filter and silently ran every skill:
+
+```
+before: PASS RATE: 6/6 = 1.000
+after : ERROR: --skill was given an empty value (exit 2)
+```
+
+Both now test `is not None`, and an empty value is reported rather than absorbed. The
+original fixture-file instance from item 26 is the third.
+
+`test_empty_is_not_treated_as_absent` covers all three, including that `--skill tdd` still
+filters to 2 cases so the fix did not disable the flag.
 
 ## Verifying the fixes
 

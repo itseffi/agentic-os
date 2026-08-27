@@ -56,7 +56,8 @@ def _load_case_files(skill_filter: str | None) -> list[dict[str, Any]]:
     casesets = []
     for path in sorted(CASES_DIR.glob("*.json")):
         data = json.loads(path.read_text(encoding="utf-8"))
-        if skill_filter and data.get("skill") != skill_filter:
+        # `is not None`, not truthiness: --skill "" is a mistake to report, not "no filter".
+        if skill_filter is not None and data.get("skill") != skill_filter:
             continue
         casesets.append(data)
     return casesets
@@ -249,6 +250,10 @@ def main() -> int:
     judge = None
     if args.judge == "openai":
         judge = {"base_url": args.base_url, "model": args.model, "api_key": args.api_key}
+
+    if args.skill is not None and not args.skill.strip():
+        print("ERROR: --skill was given an empty value")
+        return 2
 
     casesets = _load_case_files(args.skill)
     if not casesets:

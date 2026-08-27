@@ -638,6 +638,44 @@ def test_skill_case_validator_parity() -> None:
     check("a well-formed file still passes", code == 0, out[:200])
 
 
+def test_empty_is_not_treated_as_absent() -> None:
+    """`if collection:` must not stand in for "was this provided".
+
+    Three instances of one mistake: an empty fixture file skipped the per-case fixture check,
+    `"skill": ""` skipped the filename, pack and fixture checks entirely, and `--skill ""`
+    silently ran every skill instead of reporting the empty value.
+    """
+    import subprocess
+    import shutil
+    import tempfile
+
+    sandbox = Path(tempfile.mkdtemp())
+    for sub in ("scripts", "Evals/skills/cases", "Evals/skills/fixtures", ".agents/skills"):
+        (sandbox / sub).mkdir(parents=True, exist_ok=True)
+    shutil.copy(SCRIPTS / "validate_skill_eval_cases.py", sandbox / "scripts")
+    shutil.copy(ROOT / "Evals/scenarios.json", sandbox / "Evals")
+    shutil.copytree(ROOT / ".agents/skills/tdd", sandbox / ".agents/skills/tdd")
+    (sandbox / "Evals/skills/cases/tdd.json").write_text(json.dumps(
+        {"skill": "", "version": 1, "cases": [{"id": "c", "input": "a", "expected": ["x"]}]}))
+    proc = subprocess.run([sys.executable, str(sandbox / "scripts/validate_skill_eval_cases.py")],
+                          capture_output=True, text=True)
+    check("empty 'skill' field rejected",
+          proc.returncode == 1 and "must be a non-empty string" in proc.stdout, proc.stdout[:200])
+
+    proc = subprocess.run([sys.executable, str(SCRIPTS / "run_skill_evals.py"), "--skill", ""],
+                          capture_output=True, text=True, cwd=ROOT)
+    check("--skill '' reports the empty value",
+          proc.returncode == 2 and "empty value" in proc.stdout, proc.stdout[:200])
+    check("--skill '' does not run every skill", "PASS RATE" not in proc.stdout, proc.stdout[:200])
+
+    proc = subprocess.run([sys.executable, str(SCRIPTS / "run_skill_evals.py"), "--skill", "tdd"],
+                          capture_output=True, text=True, cwd=ROOT)
+    check("--skill tdd still filters", "2/2" in proc.stdout, proc.stdout[:200])
+    for line in proc.stdout.splitlines():
+        if line.startswith("RESULTS:"):
+            (ROOT / line.split("RESULTS:", 1)[1].strip()).unlink(missing_ok=True)
+
+
 def main() -> int:
     stub = Stub()
     try:
@@ -659,6 +697,7 @@ def main() -> int:
         test_results_paths_do_not_collide()
         test_error_messages_name_an_absolute_path()
         test_skill_case_validator_parity()
+        test_empty_is_not_treated_as_absent()
         test_skill_prompt_is_not_contaminated()
     finally:
         stub.stop()

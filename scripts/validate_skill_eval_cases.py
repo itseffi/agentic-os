@@ -34,9 +34,14 @@ for path in sorted(CASES_DIR.glob("*.json")):
     # The runner selects fixtures and applies --skill by this field, not by the filename, so
     # a mismatch silently scores one skill's cases against another skill's fixture responses.
     declared = data.get("skill")
-    if declared and declared != path.stem:
+    # Reject an empty value outright rather than letting the guards below skip on it. With
+    # `if declared`, "skill": "" silently disabled the filename, pack and fixture checks.
+    if declared is not None and (not isinstance(declared, str) or not declared.strip()):
+        errors.append(f"{path}: 'skill' must be a non-empty string")
+        declared = None
+    if declared is not None and declared != path.stem:
         errors.append(f"{path}: 'skill' is '{declared}' but the file is named '{path.stem}.json'")
-    if declared and not (SKILLS_DIR / str(declared)).is_dir():
+    if declared is not None and not (SKILLS_DIR / str(declared)).is_dir():
         errors.append(f"{path}: 'skill' is '{declared}', which is not a pack in .agents/skills")
 
     fixture_path = FIXTURES_DIR / f"{declared}.json"
@@ -44,7 +49,7 @@ for path in sorted(CASES_DIR.glob("*.json")):
     # Track loading separately from contents: an empty fixture file yields an empty set, and
     # guarding the per-case check on truthiness would skip exactly the file that needs it.
     fixture_loaded = False
-    if declared:
+    if declared is not None:
         if not fixture_path.exists():
             errors.append(f"{path}: no fixture file at {fixture_path}")
         else:
